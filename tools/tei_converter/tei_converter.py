@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Write the entities of a JSON Lines file as stand-off TEI annotations for Recogito Studio.
 
-Input: JSON Lines, one object per paragraph: {"text": ..., "spans": [{"start", "end", ...}]}.
-Every span that has an id in --id-field (default "reranker_results") becomes one annotation that links its
-characters to <base-url><id>. Spans without an id are skipped. The result is one TEI file for the whole input.
+Input: JSON Lines, one object per paragraph: {"text": ..., "entities": [{"start", "end", ...}]}.
+Every entity that has an id in --id-field (default "reranker_results") becomes one annotation that links its
+characters to <base-url><id>. Entities without an id are skipped. The result is one TEI file for the whole input.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def log(message: str) -> None:
     print(f"[tei_converter] {message}", file=sys.stderr, flush=True)
 
 
-def read_rows(path: Path) -> list[dict]:
+def read_rows(path: Path, field: str) -> list[dict]:
     raw = path.read_text(encoding="utf-8-sig")
     try:
         data = json.loads(raw)
@@ -35,8 +35,11 @@ def read_rows(path: Path) -> list[dict]:
     except json.JSONDecodeError:  # JSON Lines
         rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
     for number, row in enumerate(rows, 1):
-        if not isinstance(row, dict) or not isinstance(row.get("text"), str) or not isinstance(row.get("spans", []), list):
-            raise SystemExit(f"Input item {number} is not an object with a string 'text' and a 'spans' list.")
+        if not isinstance(row, dict) or not isinstance(row.get("text"), str) or not isinstance(row.get(field, []), list):
+            raise SystemExit(f"Input item {number} is not an object with a string 'text' and a {field!r} list.")
+    if not any(field in row for row in rows):
+        raise SystemExit(f"No item has a {field!r} list. Set the field that holds the entities, for example "
+                         "'entities' (spaCy NLP Annotators) as spaCy NLP Annotators writes it.")
     return rows
 
 
@@ -52,16 +55,18 @@ def clean(text: str) -> tuple[str, list[int] | None]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path)
-    parser.add_argument("--id-field", default="reranker_results", help="span field with the id of the chosen entry")
+    parser.add_argument("--entities-field", default="entities", help="item field with the list of entities")
+    parser.add_argument("--id-field", default="reranker_results", help="entity field with the id of the chosen entry")
     parser.add_argument("--base-url", default="", help="put in front of the id, e.g. https://topostext.org/place/")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
-    if not NAME_RE.fullmatch(args.id_field):
-        raise SystemExit(f"Invalid span field {args.id_field!r}.")
+    for option, value in (("--id-field", args.id_field), ("--entities-field", args.entities_field)):
+        if not NAME_RE.fullmatch(value):
+            raise SystemExit(f"Invalid value for {option}: {value!r}.")
     if args.base_url and not URL_RE.fullmatch(args.base_url):
         raise SystemExit(f"The base URL must start with http:// or https://, not {args.base_url!r}.")
-    rows = read_rows(args.input)
+    rows = read_rows(args.input, args.entities_field)
 
     tei = etree.Element("TEI", nsmap={None: NS_TEI}, version="3.3.0")
     annotations = etree.SubElement(etree.SubElement(tei, "standOff", type="recogito_studio_annotations"), "listAnnotation")
@@ -72,16 +77,16 @@ def main() -> None:
         text, new_position = clean(row["text"])
         etree.SubElement(body, "p").text = text
         path = f"/TEI[1]/text[1]/body[1]/p[{counter}]"
-        for span in row["spans"]:
-            chosen = span.get(args.id_field)
+        for entity in row.get(args.entities_field, []):
+            chosen = entity.get(args.id_field)
             if isinstance(chosen, list):  # e.g. the ranked ids of the search step: take the best
                 chosen = chosen[0] if chosen else None
             if chosen is None or chosen == "":
                 skipped += 1
                 continue
-            start, end = span["start"], span["end"]
+            start, end = entity["start"], entity["end"]
             if not (isinstance(start, int) and isinstance(end, int) and 0 <= start <= end <= len(row["text"])):
-                raise SystemExit(f"Paragraph {counter} has a span with positions {start}:{end} outside its text.")
+                raise SystemExit(f"Paragraph {counter} has an entity with positions {start}:{end} outside its text.")
             if new_position:
                 start, end = new_position[start], new_position[end]
             note = etree.SubElement(annotations, "annotation", ana=f"{args.base_url}{chosen}",
@@ -90,7 +95,7 @@ def main() -> None:
             written += 1
 
     args.output.write_bytes(etree.tostring(tei, xml_declaration=True, encoding="utf-8", pretty_print=True))
-    log(f"{len(rows)} paragraph(s), {written} annotation(s) written, {skipped} span(s) without an id skipped.")
+    log(f"{len(rows)} paragraph(s), {written} annotation(s) written, {skipped} entity(ies) without an id skipped.")
 
 
 if __name__ == "__main__":

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Rerank the candidate knowledge-base entries of every entity with a sentence-transformers CrossEncoder.
 
-Input and output are JSON Lines, one object per paragraph: {"text": ..., "spans": [{"start", "end", "label", ...}]}.
-For every span, its mention (the characters from "start" to "end" of the paragraph) or, if --query-field is given,
-the text in that span field (for example a description written by an LLM) is scored against each candidate listed in
+Input and output are JSON Lines, one object per paragraph: {"text": ..., "entities": [{"start", "end", "label", ...}]}.
+For every entity, its mention (the characters from "start" to "end" of its text) is scored against each candidate listed in
 --candidates-field (default "index_results", the ids from the FAISS search). The text of a candidate is
-"<title>: <description>", read from the knowledge-base metadata. The span gets
+"<title>: <description>", read from the knowledge-base metadata. The entity gets
 
   reranker_results  the id of the best candidate (null if there were no candidates)
   reranker_scores   [{"id": ..., "score": ...}, ...] for all candidates, best first
@@ -45,23 +44,22 @@ def read_jsonl(path: Path) -> list:
         return [json.loads(line) for line in raw.splitlines() if line.strip()]
 
 
-def read_rows(path: Path) -> list[dict]:
+def read_rows(path: Path, field: str) -> list[dict]:
     rows = read_jsonl(path)
     for number, row in enumerate(rows, 1):
-        if not isinstance(row, dict) or not isinstance(row.get("spans", []), list):
-            raise SystemExit(f"Input item {number} is not an object with a 'spans' list.")
+        if not isinstance(row, dict) or not isinstance(row.get(field, []), list):
+            raise SystemExit(f"Input item {number} is not an object with a {field!r} list.")
+    if not any(field in row for row in rows):
+        raise SystemExit(f"No item has a {field!r} list. Set the field that holds the entities, for example "
+                         "'entities', as spaCy NLP Annotators writes it.")
     return rows
 
 
-def span_query(row: dict, span: dict, field: str):
-    """The text to match for a span: the field if given, else the mention itself. None if there is none."""
-    if field:
-        text = span.get(field)
-    else:
-        start, end, paragraph = span.get("start"), span.get("end"), row.get("text")
-        ok = isinstance(paragraph, str) and isinstance(start, int) and isinstance(end, int) and 0 <= start <= end <= len(paragraph)
-        text = paragraph[start:end] if ok else None
-    return text if isinstance(text, str) and text.strip() else None
+def mention(row: dict, entity: dict):
+    """The text of the mention: the characters from start to end of the text. None if the positions are no good."""
+    start, end, text = entity.get("start"), entity.get("end"), row.get("text")
+    ok = isinstance(text, str) and isinstance(start, int) and isinstance(end, int) and 0 <= start <= end <= len(text)
+    return text[start:end] if ok and text[start:end].strip() else None
 
 
 def read_documents(path: Path, id_field: str, title_field: str, text_field: str) -> dict:
@@ -101,13 +99,13 @@ def load_model(name: str, dtype: str):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument("--entities-field", default="entities", help="item field with the list of entities")
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--id-field", default="", help="metadata field with the id; empty = line number")
     parser.add_argument("--title-field", default="title")
     parser.add_argument("--text-field", default="description")
     parser.add_argument("--model", required=True, help="CrossEncoder model on Hugging Face")
-    parser.add_argument("--query-field", default="", help="span field with the text to match; empty = the mention itself")
-    parser.add_argument("--candidates-field", default="index_results", help="span field with the candidate ids")
+    parser.add_argument("--candidates-field", default="index_results", help="entity field with the candidate ids")
     parser.add_argument("--dtype", default="float32", choices=["float32", "auto"])
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--output", required=True, type=Path)
@@ -117,51 +115,49 @@ def main() -> None:
     if not MODEL_RE.fullmatch(args.model):
         raise SystemExit(f"Invalid model name {args.model!r}.")
     for option, value in (("--id-field", args.id_field), ("--title-field", args.title_field),
-                          ("--text-field", args.text_field), ("--query-field", args.query_field),
-                          ("--candidates-field", args.candidates_field)):
+                          ("--text-field", args.text_field),
+                          ("--candidates-field", args.candidates_field), ("--entities-field", args.entities_field)):
         if value and not NAME_RE.fullmatch(value):
             raise SystemExit(f"Invalid value for {option}: {value!r}.")
     if not (args.title_field or args.text_field):
         raise SystemExit("Give a title field, a text field or both.")
 
-    rows = read_rows(args.input)
+    rows = read_rows(args.input, args.entities_field)
     documents = read_documents(args.metadata, args.id_field, args.title_field, args.text_field)
 
-    work, bad_query, bad_ids = [], 0, set()  # work: (span, query, candidate ids)
+    work, bad_query, bad_ids = [], 0, set()  # work: (entity, mention, candidate ids)
     for row in rows:
-        for span in row.get("spans", []):
-            candidates = span.get(args.candidates_field) or []
+        for entity in row.get(args.entities_field, []):
+            candidates = entity.get(args.candidates_field) or []
             if not candidates:
-                span["reranker_results"], span["reranker_scores"] = None, []
+                entity["reranker_results"], entity["reranker_scores"] = None, []
                 continue
-            query = span_query(row, span, args.query_field)
+            query = mention(row, entity)
             if query is None:
                 bad_query += 1
             bad_ids.update(c for c in candidates if c not in documents)
-            work.append((span, query, candidates))
+            work.append((entity, query, candidates))
     if bad_query:
-        raise SystemExit(f"{bad_query} span(s) have no {args.query_field!r} text to match. Run the step that writes "
-                         "it first, or use the mention itself." if args.query_field else
-                         f"{bad_query} span(s) have empty or out-of-range 'start' and 'end' positions, so there is "
+        raise SystemExit(f"{bad_query} entity(ies) have empty or out-of-range 'start' and 'end' positions, so there is "
                          "no mention to match.")
     if bad_ids:
         raise SystemExit(f"{len(bad_ids)} candidate id(s) are not in the metadata, for example "
                          f"{sorted(map(str, bad_ids))[:3]}. Use the metadata of the knowledge base that was searched.")
     pairs = sum(len(candidates) for _, _, candidates in work)
-    log(f"{len(rows)} paragraph(s), {len(work)} span(s), {pairs} pair(s) to score.")
+    log(f"{len(rows)} text(s), {len(work)} entity(ies), {pairs} pair(s) to score.")
 
     if work:
         model = load_model(args.model, args.dtype)
         done = 0
-        for span, query, candidates in work:
+        for entity, query, candidates in work:
             scores = model.predict([(query, documents[c]) for c in candidates], batch_size=args.batch_size,
                                    show_progress_bar=False, convert_to_numpy=True)
             ranked = sorted(zip(candidates, (float(s) for s in scores)), key=lambda pair: -pair[1])
-            span["reranker_results"] = ranked[0][0]
-            span["reranker_scores"] = [{"id": c, "score": s} for c, s in ranked]
+            entity["reranker_results"] = ranked[0][0]
+            entity["reranker_scores"] = [{"id": c, "score": s} for c, s in ranked]
             done += 1
             if done % 25 == 0:
-                log(f"{done}/{len(work)} spans done.")
+                log(f"{done}/{len(work)} entities done.")
 
     args.output.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
     log("Done.")

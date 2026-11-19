@@ -26,14 +26,12 @@
     <command detect_errors="exit_code"><![CDATA[
         python '$__tool_directory__/embed_faiss_search.py'
             --input '$input'
+            --entities-field '$entities_field'
             --index '$faiss_index'
             --metadata '$metadata'
             --id-field '${id_field or ""}'
             --model '$embedding_model'
             --prompt '${query_prompt or ""}'
-            #if $source.query_source == 'field'
-                --field '$source.span_field'
-            #end if
             --top-k '$top_k'
             $normalize
             --dtype '$dtype'
@@ -42,42 +40,33 @@
     ]]></command>
     <inputs>
         <param name="input" type="data" format="txt" label="Paragraphs with entities"
-               help="JSON Lines, one object per paragraph, with a &quot;spans&quot; list. Every span needs &quot;start&quot; and &quot;end&quot; positions in its paragraph, as the NER tool writes them." />
+               help="JSON Lines, one object per paragraph, with a list of entities (by default the field &quot;entities&quot;, as spaCy NLP Annotators writes it). Every entity needs &quot;start&quot; and &quot;end&quot; positions in its text." />
+        <param name="entities_field" type="text" value="entities" label="Field with the entities"
+               help="The field of every item that lists its entities, each with &quot;start&quot; and &quot;end&quot; positions. spaCy NLP Annotators writes &quot;entities&quot;. The results are written into the same list.">
+            <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
+        </param>
         <param name="faiss_index" type="data" format="data" label="FAISS index"
-               help="The index of the knowledge base, for example topostext.index (https://github.com/atrium-research/T4.5.2_Geotagging_of_texts/releases/tag/v.2)." />
+               help="The FAISS index of the knowledge base." />
         <param name="metadata" type="data" format="txt" label="Knowledge-base metadata (JSON Lines)"
-               help="One JSON object per line, for example topostext_metadata.jsonl (https://github.com/atrium-research/T4.5.2_Geotagging_of_texts/releases/tag/v.2). Line N describes vector N of the index." />
+               help="One JSON object per line. Line N describes vector N of the index." />
         <param name="id_field" type="text" value="toposid" optional="true" label="ID field in the metadata"
                help="The field that identifies an entry, copied into the results. Leave empty to use the line number (starting at 0).">
             <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
         </param>
         <param name="embedding_model" type="select" label="Embedding model"
                help="The model that built the index. The index does not say which one it was, and a different model gives wrong results.">
-            <option value="google/embeddinggemma-2" selected="true">google/embeddinggemma-2 (ToposText index)</option>
+            <option value="google/embeddinggemma-2" selected="true">google/embeddinggemma-2</option>
             <option value="sentence-transformers/all-MiniLM-L6-v2">sentence-transformers/all-MiniLM-L6-v2 (small, for indexes built with it)</option>
         </param>
         <param name="query_prompt" type="text" value="SearchQuery" optional="true" label="Query prompt"
                help="The name of the model's prompt for search queries (EmbeddingGemma uses SearchQuery). Leave empty if the model has none.">
             <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
         </param>
-        <conditional name="source">
-            <param name="query_source" type="select" label="Text to look up"
-                   help="The mention alone worked best in tests: with more text around it, the other words in the sentence start to decide the result.">
-                <option value="mention" selected="true">The mention itself (the characters from start to end)</option>
-                <option value="field">A field of the span, for example a description written by an LLM</option>
-            </param>
-            <when value="mention" />
-            <when value="field">
-                <param name="span_field" type="text" value="recontext" label="Span field to look up">
-                    <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
-                </param>
-            </when>
-        </conditional>
-        <param name="top_k" type="integer" value="30" min="1" max="1000" label="Results per span"
+        <param name="top_k" type="integer" value="30" min="1" max="1000" label="Results per entity"
                help="How many candidates to keep for the reranking step. 30 (default)." />
         <param name="normalize" type="boolean" checked="true" truevalue="--normalize" falsevalue="" label="Normalize the query vectors"
-               help="Keep this on if the index was built from normalized vectors, as the ToposText index was." />
-        <param name="dtype" type="select" label="Numeric precision of the model" help="The default matches the notebook. float32 is a little more precise, but the order of the last results can change.">
+               help="Keep this on if the index was built from normalized vectors, as is usual for cosine similarity." />
+        <param name="dtype" type="select" label="Numeric precision of the model" help="The default keeps the precision the model was saved in. float32 is a little more precise, but the order of the last results can change.">
             <option value="auto" selected="true">As the model was saved (default)</option>
             <option value="float32">float32</option>
         </param>
@@ -88,25 +77,6 @@
         <data name="output" format="json" label="${tool.name} on ${on_string}" />
     </outputs>
     <tests>
-        <test expect_num_outputs="1">
-            <param name="input" value="rows_recontext.jsonl" ftype="txt" />
-            <param name="faiss_index" value="places.index" ftype="data" />
-            <param name="metadata" value="places_metadata.jsonl" ftype="txt" />
-            <param name="embedding_model" value="sentence-transformers/all-MiniLM-L6-v2" />
-            <param name="query_prompt" value="" />
-            <conditional name="source">
-                <param name="query_source" value="field" />
-                <param name="span_field" value="recontext" />
-            </conditional>
-            <param name="top_k" value="3" />
-            <output name="output">
-                <assert_contents>
-                    <has_n_lines n="1" />
-                    <has_text text="&quot;index_results&quot;: [&quot;PIR&quot;" />
-                    <has_text text="&quot;index_results&quot;: [&quot;DEL&quot;" />
-                </assert_contents>
-            </output>
-        </test>
         <test expect_num_outputs="1">
             <param name="input" value="rows_recontext.jsonl" ftype="txt" />
             <param name="faiss_index" value="places.index" ftype="data" />
@@ -129,45 +99,39 @@
             <param name="id_field" value="" />
             <param name="embedding_model" value="sentence-transformers/all-MiniLM-L6-v2" />
             <param name="query_prompt" value="" />
-            <conditional name="source">
-                <param name="query_source" value="field" />
-                <param name="span_field" value="recontext" />
-            </conditional>
             <param name="top_k" value="2" />
             <output name="output">
                 <assert_contents>
-                    <has_text text="&quot;index_results&quot;: [3," />
-                    <has_text text="&quot;index_results&quot;: [2," />
+                    <has_text text="&quot;index_results&quot;: [" />
+                    <not_has_text text="&quot;PIR&quot;" />
                 </assert_contents>
             </output>
         </test>
     </tests>
     <help><![CDATA[
 **Embedding search with FAISS** finds, for every entity in a text, the entries of a knowledge base that fit it best.
-It embeds the mention (or, if you choose, a description of it) and looks the vector up in a FAISS index. It is the retrieval step of the
-`T4.5.2 Geotagging of texts <https://github.com/atrium-research/T4.5.2_Geotagging_of_texts>`_ workflow.
+It embeds the mention of the entity and looks the vector up in a FAISS index. It can follow any step that finds
+entities, such as an NER tool, and can be followed by a reranking step.
 
 Input
 -----
 
-* **Paragraphs with entities**: JSON Lines, for example from the NER tool::
+* **Texts with entities**: JSON or JSON Lines, for example the output of spaCy NLP Annotators with named entity recognition::
 
-      {"text": "He sailed to Delphi.", "spans": [{"start": 14, "end": 20, "label": "PLACE"}]}
+      {"text": "He sailed to Delphi.", "entities": [{"start": 14, "end": 20, "label": "GPE"}]}
 
-  The mention is the text from ``start`` to ``end``. Alternatively, look up a field of the span, such as a short
-  description of the entity written by an LLM step.
+  The mention is the text from ``start`` to ``end``, and it is what is looked up.
 
 * **FAISS index** and **metadata**: the knowledge base. Line N of the metadata (JSON Lines) describes vector N of
-  the index, so they must come from the same knowledge base. For ToposText, take ``topostext.index`` and
-  ``topostext_metadata.jsonl`` from the `release page <https://github.com/atrium-research/T4.5.2_Geotagging_of_texts/releases/tag/v.2>`_.
-  Any other knowledge base works the same way.
+  the index, so they must come from the same knowledge base. Any knowledge base works, as long as the index and the
+  metadata match.
 * **Embedding model**: the model that built the index. The tool checks that its vectors have the size of the
   index, but it cannot tell two models of the same size apart, so choose the right one.
 
 Output
 ------
 
-The same JSON Lines, with ``index_results`` added to every span: the ids of the nearest entries, best first.
+The same JSON Lines, with ``index_results`` added to every entity: the ids of the nearest entries, best first.
 Galaxy has no JSON Lines datatype, so the file is labelled ``json``.
 
 The model is downloaded when the job runs, so the server needs internet access.

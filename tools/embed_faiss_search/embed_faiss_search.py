@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Embed the text written for each entity and look it up in a FAISS index of a knowledge base.
 
-Input and output are JSON Lines, one object per paragraph: {"text": ..., "spans": [{"start", "end", "label", ...}]}.
-For every span the mention itself (the characters from "start" to "end" of the paragraph) is embedded, or the text
-in --field if one is given (for example a description written by an LLM). The --top-k nearest knowledge-base
-entries are added to the span as "index_results", a list of their ids, best first.
+Input and output are JSON Lines, one object per paragraph: {"text": ..., "entities": [{"start", "end", "label", ...}]}.
+For every entity the mention itself (the characters from "start" to "end" of its text) is embedded. The --top-k
+nearest knowledge-base entries are added to the entity as "index_results", a list of their ids, best first.
 
 The FAISS index and the metadata file go together: row i of the metadata (JSON Lines) describes vector i of the index.
 The embedding model must be the one that built the index; the index does not say which one it was, so the vector
@@ -45,11 +44,14 @@ def read_jsonl(path: Path) -> list:
         return [json.loads(line) for line in raw.splitlines() if line.strip()]
 
 
-def read_rows(path: Path) -> list[dict]:
+def read_rows(path: Path, field: str) -> list[dict]:
     rows = read_jsonl(path)
     for number, row in enumerate(rows, 1):
-        if not isinstance(row, dict) or not isinstance(row.get("spans", []), list):
-            raise SystemExit(f"Input item {number} is not an object with a 'spans' list.")
+        if not isinstance(row, dict) or not isinstance(row.get(field, []), list):
+            raise SystemExit(f"Input item {number} is not an object with a {field!r} list.")
+    if not any(field in row for row in rows):
+        raise SystemExit(f"No item has a {field!r} list. Set the field that holds the entities, for example "
+                         "'entities', as spaCy NLP Annotators writes it.")
     return rows
 
 
@@ -67,15 +69,11 @@ def read_ids(path: Path, id_field: str) -> list:
     return ids
 
 
-def span_text(row: dict, span: dict, field: str):
-    """The text to look up for a span: the field if given, else the mention itself. None if there is none."""
-    if field:
-        text = span.get(field)
-    else:
-        start, end, paragraph = span.get("start"), span.get("end"), row.get("text")
-        ok = isinstance(paragraph, str) and isinstance(start, int) and isinstance(end, int) and 0 <= start <= end <= len(paragraph)
-        text = paragraph[start:end] if ok else None
-    return text if isinstance(text, str) and text.strip() else None
+def mention(row: dict, entity: dict):
+    """The text of the mention: the characters from start to end of the text. None if the positions are no good."""
+    start, end, text = entity.get("start"), entity.get("end"), row.get("text")
+    ok = isinstance(text, str) and isinstance(start, int) and isinstance(end, int) and 0 <= start <= end <= len(text)
+    return text[start:end] if ok and text[start:end].strip() else None
 
 
 def load_model(name: str, prompt: str, dtype: str):
@@ -102,12 +100,12 @@ def load_model(name: str, prompt: str, dtype: str):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument("--entities-field", default="entities", help="item field with the list of entities")
     parser.add_argument("--index", required=True, type=Path)
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--id-field", default="", help="metadata field with the id; empty = row number")
     parser.add_argument("--model", required=True, help="embedding model on Hugging Face, the one that built the index")
     parser.add_argument("--prompt", default="", help="name of the model's query prompt, empty = none")
-    parser.add_argument("--field", default="", help="span field with the text to embed; empty = the mention itself")
     parser.add_argument("--top-k", type=int, default=30)
     parser.add_argument("--dtype", default="auto", choices=["auto", "float32"], help="precision of the embedding model")
     parser.add_argument("--normalize", action="store_true", help="normalize the query vectors, as when the index was built")
@@ -118,25 +116,24 @@ def main() -> None:
     # These values end up in a download request or a dict key, so they are checked here as well as in the form.
     if not MODEL_RE.fullmatch(args.model):
         raise SystemExit(f"Invalid model name {args.model!r}.")
-    for option, value in (("--prompt", args.prompt), ("--field", args.field), ("--id-field", args.id_field)):
+    for option, value in (("--prompt", args.prompt), ("--id-field", args.id_field),
+                          ("--entities-field", args.entities_field)):
         if value and not NAME_RE.fullmatch(value):
             raise SystemExit(f"Invalid value for {option}: {value!r}.")
 
-    rows = read_rows(args.input)
+    rows = read_rows(args.input, args.entities_field)
     queries, missing = [], 0
-    for r, row in enumerate(rows):
-        for span in row.get("spans", []):
-            text = span_text(row, span, args.field)
+    for row in rows:
+        for entity in row.get(args.entities_field, []):
+            text = mention(row, entity)
             if text:
-                queries.append((span, text))
+                queries.append((entity, text))
             else:
                 missing += 1
     if missing:
-        raise SystemExit(f"{missing} span(s) have no {args.field!r} text to embed. Run the step that writes it "
-                         "first, or use the mention itself." if args.field else
-                         f"{missing} span(s) have empty or out-of-range 'start' and 'end' positions, so there is no "
-                         "mention to look up.")
-    log(f"{len(rows)} paragraph(s), {len(queries)} span(s) to look up.")
+        raise SystemExit(f"{missing} entity(ies) have empty or out-of-range 'start' and 'end' positions, so there is "
+                         "no mention to look up.")
+    log(f"{len(rows)} text(s), {len(queries)} entity(ies) to look up.")
 
     import numpy as np
     import torch  # noqa: F401  torch first: imported after faiss, their OpenMP runtimes clash and crash on macOS
@@ -162,9 +159,9 @@ def main() -> None:
                                    normalize_embeddings=args.normalize, batch_size=args.batch_size,
                                    convert_to_numpy=True, show_progress_bar=False)
             _, hits = index.search(np.ascontiguousarray(vectors, dtype="float32"), args.top_k)
-            for (span, _), found in zip(chunk, hits):
-                span["index_results"] = [kb_ids[i] for i in found if i >= 0]  # -1 means fewer entries than top-k
-            log(f"{min(start + 256, len(queries))}/{len(queries)} spans done.")
+            for (entity, _), found in zip(chunk, hits):
+                entity["index_results"] = [kb_ids[i] for i in found if i >= 0]  # -1 means fewer entries than top-k
+            log(f"{min(start + 256, len(queries))}/{len(queries)} entities done.")
 
     args.output.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
     log("Done.")
