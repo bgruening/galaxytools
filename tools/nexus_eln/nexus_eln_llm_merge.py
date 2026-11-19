@@ -22,8 +22,8 @@ from pathlib import Path
 
 import yaml
 from nexus_llm_input import (
-    BASE_ELN_NAME, definition_of, example_values, has_path, INSTRUCTIONS_NAME,
-    load_instructions, set_path, source_files,
+    BASE_ELN_NAME, COMMON, definition_of, eln_instructions, example_values, has_path,
+    INSTRUCTIONS_NAME, OUTPUT, set_path, source_files,
 )
 
 logger = logging.getLogger("nexus_eln_llm_merge")
@@ -170,14 +170,11 @@ def allowed_value(value, allowed, changes):
     raise Dropped("not_allowed")
 
 
-def check_field(field, value, evidence, sources, rules, definition, examples):
-    """The value to keep and its report entry; raises Dropped with the reason."""
-    entry = {"value": value, "notes": [], "changes": []}
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        value = str(value)
-    if not isinstance(value, str):
-        raise Dropped("not_text")
-    item = evidence.get(field)
+def find_quote(item, sources, entry):
+    """(sources holding the evidence's quote, the quote without header keys); raises Dropped.
+
+    Notes go to `entry`. Also used by nexus_eln_builder for the detection answer.
+    """
     if not isinstance(item, dict) or not str(item.get("quote", "")).strip():
         raise Dropped("no_evidence")
     quote, named = norm(item["quote"]), file_key(item.get("file", ""))
@@ -193,13 +190,24 @@ def check_field(field, value, evidence, sources, rules, definition, examples):
             entry["notes"].append("quote found only when spaces are ignored")
     if not found:
         raise Dropped("quote_not_found")
-    if all(source["kind"] == "header" for source in found) and field not in rules.get("header", []):
-        raise Dropped("not_a_header_field")
     if named not in [file_key(source["name"]) for source in found]:
         entry["notes"].append(f"quote found in {found[0]['name']}, not in the named file")
     quote_text = norm(HEADER_KEY.sub(" ", quote))
     if not quote_text:
         raise Dropped("header_key_only")
+    return found, quote_text
+
+
+def check_field(field, value, evidence, sources, rules, definition, examples):
+    """The value to keep and its report entry; raises Dropped with the reason."""
+    entry = {"value": value, "notes": [], "changes": []}
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        value = str(value)
+    if not isinstance(value, str):
+        raise Dropped("not_text")
+    found, quote_text = find_quote(evidence.get(field), sources, entry)
+    if all(source["kind"] == "header" for source in found) and field not in rules.get("header", []):
+        raise Dropped("not_a_header_field")
     # Only the own quote, without header keys, counts: a short value like "3.3" is in most headers.
     if field in rules["literal"] and squash(value) not in squash(quote_text):
         raise Dropped("value_not_in_quote")
@@ -218,7 +226,7 @@ def check_field(field, value, evidence, sources, rules, definition, examples):
     return value, entry
 
 
-def merge(rule_eln, answer_text, bundle, header, rules, instructions_dir):
+def merge(rule_eln, answer_text, bundle, header, rules, instructions_path):
     """The merged ELN and the report."""
     definition = definition_of(rule_eln, rules)
     report = {
@@ -241,9 +249,9 @@ def merge(rule_eln, answer_text, bundle, header, rules, instructions_dir):
     if not definition:
         report["status"] = "no_definition"
         return copy.deepcopy(rule_eln), report
-    instructions = load_instructions(definition, rules, instructions_dir)
+    instructions = eln_instructions(definition, rules, instructions_path)
     report["instructions"] = {
-        "path": rules["definitions"][definition]["instructions"],
+        "sections": [COMMON, definition, OUTPUT],
         "sha256": hashlib.sha256(instructions.encode("utf-8")).hexdigest(),
     }
     answer_eln, evidence = parse_answer(answer_text)
@@ -281,7 +289,7 @@ def main():
     parser.add_argument("--answer-label", help="Name of the answer dataset (names the model), for the report.")
     parser.add_argument("--header", required=True, help="Header JSON of the raw file; a source, as for the LLM.")
     parser.add_argument("--rules", required=True, help="Rules YAML of the pynxtools plugin.")
-    parser.add_argument("--instructions", required=True, help="Folder with the instructions per definition.")
+    parser.add_argument("--instructions", required=True, help="Instructions file of the pynxtools plugin.")
     parser.add_argument("--out-eln", required=True)
     parser.add_argument("--report", required=True)
     args = parser.parse_args()

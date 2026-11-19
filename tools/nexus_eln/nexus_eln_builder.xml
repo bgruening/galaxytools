@@ -6,6 +6,8 @@
     <expand macro="requirements_eln"/>
     <required_files>
         <include path="nexus_eln_builder.py"/>
+        <include path="nexus_eln_llm_merge.py"/>
+        <include path="nexus_llm_input.py"/>
     </required_files>
     <version_command>echo @ELN_VERSION@</version_command>
     <command detect_errors="exit_code"><![CDATA[
@@ -13,13 +15,19 @@
         '$bundle'
         --rules '$rules'
         --technique '$technique'
+        --header '$header'
+        #if $answer:
+            --answer '$answer'
+        #end if
         --eln '$eln'
         --report '$eln_report'
     ]]></command>
     <inputs>
         <param name="bundle" type="data" format="json" label="Context bundle" help="Written by the Zenodo download and unzip tool: record metadata and the text of one raw file's context files."/>
         <expand macro="rules_input"/>
-        <param argument="--technique" type="text" value="auto" label="Experiment technique" help="auto: from the raw file's extension, as listed in the rules. Or a technique of the rules, e.g. STM, STS or AFM for pynxtools-spm.">
+        <expand macro="header_input"/>
+        <param argument="--answer" type="data" format="markdown,txt" optional="true" label="LLM detection answer" help="Optional. The LLM Hub answer of the detection job (NeXus ELN LLM input, stage detect): technique and scan mode with quotes."/>
+        <param argument="--technique" type="text" value="auto" label="Experiment technique" help="auto: from the LLM detection answer, the header markers or the extension, as listed in the rules. Or a technique of the rules, e.g. STM, STS or AFM for pynxtools-spm.">
             <validator type="regex" message="auto, or a technique name (letters and digits)">[A-Za-z0-9_]+</validator>
         </param>
     </inputs>
@@ -33,6 +41,7 @@
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_with_context.json" ftype="json"/>
             <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
             <output name="eln" ftype="yaml">
                 <assert_contents>
                     <has_text text="experiment_technique: STM"/>
@@ -61,6 +70,7 @@
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_without_context.json" ftype="json"/>
             <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="header" value="no_header.json" ftype="json"/>
             <output name="eln" ftype="yaml">
                 <assert_contents>
                     <has_text text="definition: NXsts"/>
@@ -81,6 +91,7 @@
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_with_context.json" ftype="json"/>
             <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
             <param name="technique" value="AFM"/>
             <output name="eln" ftype="yaml">
                 <assert_contents>
@@ -98,10 +109,104 @@
         <test expect_failure="true">
             <param name="bundle" value="bundle_with_context.json" ftype="json"/>
             <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
             <param name="technique" value="XPS"/>
             <assert_stderr>
                 <has_text text="Unknown technique 'XPS'; the rules file has: STM, STS, AFM"/>
             </assert_stderr>
+        </test>
+        <!-- Test 05: Nanonis AFM .sxm without an answer: the header marker wins over the extension
+             (.sxm: STM); the conflict is reported. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_afm.json" ftype="json"/>
+            <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="header" value="afm_header.json" ftype="json"/>
+            <output name="eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="experiment_technique: AFM"/>
+                    <not_has_text text="scan_mode:"/>
+                </assert_contents>
+            </output>
+            <output name="eln_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="experiment_technique" value="&quot;header marker 'Frequency_Shift'&quot;"/>
+                    <has_json_property_with_value property="extension" value="&quot;STM&quot;"/>
+                    <has_json_property_with_value property="conflict" value="true"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 06: a marker on a gwyddionpy header (JSON) of a Bruker .FLT file (pynxtools-spm test data). -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_with_context.json" ftype="json"/>
+            <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="header" value="flt_header.json" ftype="json"/>
+            <output name="eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="definition: NXafm"/>
+                </assert_contents>
+            </output>
+            <output name="eln_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="experiment_technique" value="&quot;header marker 'Mode: Peak Force Tapping'&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 07: hand-written detection answer with quotes from the readme: technique and scan mode kept. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_afm.json" ftype="json"/>
+            <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="header" value="afm_header.json" ftype="json"/>
+            <param name="answer" value="answer_detect_afm.md" ftype="markdown"/>
+            <output name="eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="experiment_technique: AFM"/>
+                    <has_text text="scan_mode: tapping mode"/>
+                </assert_contents>
+            </output>
+            <output name="eln_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="experiment_technique" value="&quot;LLM detection (4_readme.txt)&quot;"/>
+                    <has_json_property_with_value property="scan_mode" value="&quot;LLM detection (4_readme.txt)&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 08: a found quote wins over the extension (.sxm: STM); a scan mode of another
+             technique is dropped. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="header" value="T190613_004_header.json" ftype="json"/>
+            <param name="answer" value="answer_detect_sts.md" ftype="markdown"/>
+            <output name="eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="definition: NXsts"/>
+                    <not_has_text text="scan_mode:"/>
+                </assert_contents>
+            </output>
+            <output name="eln_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="reason" value="&quot;not_allowed for STS&quot;"/>
+                    <has_json_property_with_value property="conflict" value="true"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 09: a quote that is in no source is dropped; the extension decides. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_with_context.json" ftype="json"/>
+            <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
+            <param name="answer" value="answer_detect_no_quote.md" ftype="markdown"/>
+            <output name="eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="experiment_technique: STM"/>
+                </assert_contents>
+            </output>
+            <output name="eln_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="reason" value="&quot;quote_not_found&quot;"/>
+                    <has_json_property_with_value property="experiment_technique" value="&quot;extension .sxm&quot;"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help format="markdown"><![CDATA[
@@ -111,19 +216,27 @@ Builds the ELN (YAML) that a pynxtools reader plugin, e.g.
 [pynxtools-spm](https://github.com/FAIRmat-NFDI/pynxtools-spm), needs next to a raw file. It reads
 one **context bundle** from the Zenodo download and unzip tool: the Zenodo record metadata and the
 text of the raw file's context files (readme, notes). The **ELN rules** of the plugin list the
-techniques, their NeXus definitions and raw file extensions.
+techniques, their NeXus definitions, raw file extensions and header markers.
 
 -----
 
 **Where the values come from**
 
-- `experiment_technique` and `definition`: the **Experiment technique** parameter; else the raw
-  file's extension, as listed in the rules (for pynxtools-spm: `.sxm` → STM, `.dat` → STS,
-  `.spm` → AFM, ...).
+- `experiment_technique` and `definition`: the first of
+  1. the **Experiment technique** parameter, if not `auto`;
+  2. the **LLM detection answer**, if its quote is found in a source file (header, record text,
+     context files);
+  3. the `header_markers` of the rules (regular expressions on the **raw file header**), if only one
+     technique's markers match;
+  4. the raw file's extension, as listed in the rules (for pynxtools-spm: `.sxm` → STM, `.dat` → STS,
+     `.spm` → AFM, ...).
+
+  The report lists every candidate and `conflict: true` when they differ.
 - `identifier_collection`, `citeID`, `experiment_description`: the record's DOI, creators, title
   and description.
 - `Sample/name`, `Sample/description`, `scan_mode`: lines such as `Sample: Au(111)` or
-  `Scan mode: constant current` in the context files.
+  `Scan mode: constant current` in the context files. Else `scan_mode` from the LLM detection
+  answer, if its quote is found and it is an allowed value of the technique.
 - `User`: the person who runs the harvest (name, email, affiliation from the work list), with the
   role "harvested and converted the data". People named in the dataset files are not users; the
   Zenodo creators are in `citeID`.

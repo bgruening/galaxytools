@@ -2,24 +2,26 @@
 """Build an ELN YAML for one raw file from its context bundle.
 
 The bundle (written by the ``zenodo_download_unzip`` tool) holds the Zenodo
-record metadata and the text of the raw file's context files. The technique and
-NeXus definition come from the raw file's extension, as listed in the rules file
-(``definitions.<name>.extensions``) of the pynxtools plugin, e.g.
+record metadata and the text of the raw file's context files. The technique, and so
+the NeXus definition, comes from the first of: the tool parameter; the LLM detection
+answer, if its quote is found in a source file; the header markers of the rules file;
+the raw file's extension. The rules file is the pynxtools plugin's, e.g.
 https://github.com/FAIRmat-NFDI/pynxtools-spm
 
-Values are only taken from the record metadata and the context text; nothing is
-guessed. Fields that were not found are listed in the report.
+Values are only taken from the record metadata, the context text and checked
+answers; nothing is guessed. Fields that were not found are listed in the report.
 """
 
 import argparse
-import html
 import json
 import logging
 import re
 import sys
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 import yaml
+from nexus_eln_llm_merge import allowed_value, Dropped, find_quote, norm, parse_answer
+from nexus_llm_input import plain_text, set_path, source_files
 
 logger = logging.getLogger("nexus_eln_builder")
 
@@ -37,13 +39,6 @@ USER_KEYS = ("name", "email", "affiliation", "address")
 USER_ROLE = "harvested and converted the data"
 
 
-def plain_text(description_html):
-    """Text of Zenodo's HTML description."""
-    text = re.sub(r"<br\s*/?>|</p>", "\n", description_html or "", flags=re.IGNORECASE)
-    text = html.unescape(re.sub(r"<[^>]+>", "", text))
-    return re.sub(r"\n\s*\n+", "\n\n", text).strip()
-
-
 def find_in_context(context, label):
     """First `label: value` line in the context files, with the file it came from."""
     pattern = re.compile(rf"^\s*{label}\s*[:=]\s*(\S.*?)\s*$", re.IGNORECASE | re.MULTILINE)
@@ -52,14 +47,6 @@ def find_in_context(context, label):
         if match:
             return match.group(1), item["path"]
     return None, None
-
-
-def set_path(eln, dotted, value):
-    node = eln
-    *parents, last = dotted.split(".")
-    for key in parents:
-        node = node.setdefault(key, {})
-    node[last] = value
 
 
 def definition_by_technique(rules):
@@ -74,18 +61,107 @@ def technique_of(extension, rules):
     return None
 
 
-def build_eln(bundle, technique, rules):
-    """The ELN content and a report of where each value came from.
+def flat_value(value):
+    """A header value as text: `2.1 V` for a value with a unit, JSON for other objects."""
+    if isinstance(value, dict) and set(value) == {"value", "unit"}:
+        return f"{value['value']} {value['unit']}"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
 
-    The technique parameter, unless "auto", wins over the extension rule.
+
+def header_lines(header_path):
+    """The header as the markers read it: `key: value` and `channel: <name>` lines, or its text."""
+    header = json.loads(Path(header_path).read_text(encoding="utf-8"))
+    if "text" in header:
+        return header["text"]
+    lines = [f"{key}: {flat_value(value)}" for key, value in (header.get("meta") or {}).items()]
+    for name, channel in (header.get("channels") or {}).items():
+        lines.append(f"channel: {name}")
+        meta = channel.get("meta") or {}
+        lines += [f"{key}: {flat_value(value)}" for key, value in meta.items()]
+    return "\n".join(lines)
+
+
+def marker_hits(text, rules):
+    """{technique: the matched text} for each definition whose `header_markers` match."""
+    hits = {}
+    for value in rules["definitions"].values():
+        for marker in value.get("header_markers") or []:
+            try:
+                match = re.search(marker, text, flags=re.MULTILINE)
+            except re.error as error:
+                sys.exit(f"Header marker {marker!r} of {value['technique']} is no regular expression: {error}")
+            if match:
+                hits[value["technique"]] = match.group(0)
+                break
+    return hits
+
+
+def llm_detection(answer_text, sources, rules):
+    """The checked `technique` and `scan_mode` of the detection answer, with a status.
+
+    A value is kept when its quote is found in a source file; a technique must be one of the rules.
     """
+    result = {"status": "no_answer", "fields": {}}
+    if answer_text is None:
+        return result
+    values, evidence = parse_answer(answer_text)
+    if values is None:
+        result["status"] = "unparsable"
+        return result
+    result["status"] = "checked"
+    techniques = list(definition_by_technique(rules))
+    for field in ("technique", "scan_mode"):
+        value = values.get(field)
+        if value in (None, "", "null"):
+            continue
+        entry = {"value": value, "notes": []}
+        try:
+            if not isinstance(value, str):
+                raise Dropped("not_text")
+            find_quote(evidence.get(field), sources, entry)
+            if field == "technique":
+                known = [name for name in techniques if name.lower() == norm(value).lower()]
+                if not known:
+                    raise Dropped("unknown_technique")
+                entry["value"] = known[0]
+            entry["status"] = "kept"
+        except Dropped as reason:
+            entry.update(status="dropped", reason=str(reason))
+        result["fields"][field] = entry
+    return result
+
+
+def pick_technique(parameter, llm, markers, extension, rules):
+    """(technique, source, conflict) by the order: parameter, LLM, one header marker, extension."""
+    llm_technique = llm["fields"].get("technique", {})
+    candidates = []
+    if parameter != "auto":
+        candidates.append((parameter, "tool parameter"))
+    if llm_technique.get("status") == "kept":
+        candidates.append((llm_technique["value"], f"LLM detection ({llm_technique['file']})"))
+    if len(markers) == 1:
+        (technique, match), = markers.items()
+        candidates.append((technique, f"header marker {match!r}"))
+    by_extension = technique_of(extension, rules)
+    if by_extension:
+        candidates.append((by_extension, f"extension {extension}"))
+    if not candidates:
+        return None, None, False
+    technique, source = candidates[0]
+    conflict = any(other != technique for other, _ in candidates[1:])
+    return technique, source, conflict
+
+
+def build_eln(bundle, technique, rules, header_path, answer_text=None):
+    """The ELN content and a report of where each value came from."""
     record, raw = bundle["record"], bundle["raw"]
     extension = PurePosixPath(raw["path"]).suffix.lower()
-    if technique != "auto":
-        technique_source = "tool parameter"
-    else:
-        technique = technique_of(extension, rules)
-        technique_source = f"extension {extension}"
+    llm = llm_detection(answer_text, source_files(bundle, header_path)[0], rules)
+    markers = marker_hits(header_lines(header_path), rules)
+    parameter = technique
+    technique, technique_source, conflict = pick_technique(parameter, llm, markers, extension, rules)
     sources = {}
     eln = {}
     if technique:
@@ -116,6 +192,14 @@ def build_eln(bundle, technique, rules):
         if value is not None:
             set_path(eln, field, value)
             sources[field] = path
+    llm_scan_mode = llm["fields"].get("scan_mode", {})
+    if llm_scan_mode.get("status") == "kept" and technique and "scan_mode" not in sources:
+        allowed = rules["definitions"][eln["definition"]]["scan_mode"]
+        try:
+            eln["scan_mode"] = allowed_value(llm_scan_mode["value"], allowed, llm_scan_mode["notes"])
+            sources["scan_mode"] = f"LLM detection ({llm_scan_mode['file']})"
+        except Dropped as reason:
+            llm_scan_mode.update(status="dropped", reason=f"{reason} for {technique}")
     user = {key: bundle["user"][key] for key in USER_KEYS if (bundle.get("user") or {}).get(key)}
     if "name" in user:
         # A list of users: pynxtools-spm writes USER[user_1].
@@ -130,6 +214,13 @@ def build_eln(bundle, technique, rules):
         "raw_path": raw["path"],
         "record_id": record["record_id"],
         "technique": technique,
+        "detection": {
+            "parameter": None if parameter == "auto" else parameter,
+            "llm": llm,
+            "header_markers": markers,
+            "extension": technique_of(extension, rules),
+            "conflict": conflict,
+        },
         "sources": sources,
         "missing": missing,
     }
@@ -141,6 +232,8 @@ def main():
     parser.add_argument("bundle", help="Context bundle JSON of one raw file.")
     parser.add_argument("--rules", required=True, help="Rules YAML of the pynxtools plugin.")
     parser.add_argument("--technique", default="auto", help="auto, or a technique of the rules file.")
+    parser.add_argument("--header", required=True, help="Header JSON of the raw file (raw_file_header).")
+    parser.add_argument("--answer", help="The llm_hub answer of the detection job (Markdown).")
     parser.add_argument("--eln", required=True, help="Output ELN YAML.")
     parser.add_argument("--report", required=True, help="Output JSON: value sources and missing fields.")
     args = parser.parse_args()
@@ -158,7 +251,11 @@ def main():
     techniques = definition_by_technique(rules)
     if args.technique not in ("auto", *techniques):
         sys.exit(f"Unknown technique {args.technique!r}; the rules file has: {', '.join(techniques)}")
-    eln, report = build_eln(bundle, args.technique, rules)
+    answer = Path(args.answer).read_text(encoding="utf-8", errors="replace") if args.answer else None
+    # A skipped llm_hub step (LLM off in the workflow) gives a dataset that holds only "null".
+    if answer is not None and answer.strip() == "null":
+        answer = None
+    eln, report = build_eln(bundle, args.technique, rules, args.header, answer)
     header = (
         f"# ELN built from Zenodo record {report['record_id']} for {report['raw_path']}.\n"
         f"# Not found in the record or its context files: {', '.join(report['missing']) or 'none'}.\n"

@@ -1,6 +1,16 @@
+Test file: no Detection section, and NXstm without its scan modes. ELN instructions for the LLM, read by the nexus_eln tools. A copy of pynxtools-spm's
+src/pynxtools_spm/galaxy/eln_instructions.md, used by the tests; keep both the same.
+
+Each "# <name>" line starts a section; this note is never sent. The tools send:
+- the detection job: "Detection";
+- the ELN job: "Common", the section of the ELN's definition (e.g. "NXstm"), then "Output".
+Each section must name the techniques, fields and allowed values of eln_rules.yaml it needs.
+
+# Common
+
 TASK
 You fill an ELN (electronic lab notebook) for one raw scanning probe microscopy (SPM) data file.
-Technique: STS (scanning tunneling spectroscopy). Application definition: NXsts.
+The technique and its own rules are under TECHNIQUE below.
 The pynxtools-spm converter reads the ELN to write a NeXus file.
 
 FILES (given to you as context; Galaxy adds a number in front, e.g. "3_readme.txt")
@@ -13,6 +23,7 @@ FILES (given to you as context; Galaxy adds a number in front, e.g. "3_readme.tx
   metadata. Vendor key groups are joined with "::", for instance "Z-Controller::Controller status".
   A value with a unit is written as {"value": 2.1, "unit": "V"}.
 - <raw file>_header.txt, if given instead: the header lines of the raw file as text. A source.
+- record.txt: the title and description of the dataset's Zenodo record. A source.
 - All other files: the dataset's context files (readme, notes, text of the paper and its
   supplement). Sources. The text of a PDF is given as a .txt file with the PDF's name.
 
@@ -33,8 +44,7 @@ RULES
 6. Prefer facts about THIS raw file (identifier_experiment in base_eln.txt). Use the readme and
    the header to find which figure and which measurement it belongs to, then use only that part
    of the paper. Do not add facts from other figures or other raw files.
-7. scan_mode: exactly one of these values, as written here:
-   constant height, constant current, constant spacing
+7. scan_mode: see TECHNIQUE.
 8. Sample.Sample_component.chemical_formula: the formula as the source writes it, without spaces.
    - Element symbols with their counts; a count of 1 is left out. Groups in parentheses or
      brackets with a count, and a hydrate dot, are allowed. Do not reorder the elements.
@@ -48,12 +58,11 @@ RULES
    - Do not invent a long English chemical name; it may go in the description.
    Form: <phase>-<formula>(<surface>) <form>
    Example: "2H-MoS2(001) flake"
-10. experiment_description: 1 to 5 sentences: what was measured in this raw file (for example
-   which spectra) and why.
+10. experiment_description: 1 to 5 sentences: what was measured in this raw file and why.
 11. Write in plain English, short and factual.
 
 FIELDS YOU MAY FILL (only where base_eln.txt has null)
-- Instrument.hardware.model: the STM instrument model, if named
+- Instrument.hardware.model: the instrument model, if named
 - Instrument.hardware.model/@version: the instrument version, if named
 - Instrument.software.model: the control software, if named
 - Sample.History.Note.description: how the sample was grown and prepared (cleaving,
@@ -65,6 +74,29 @@ FIELDS YOU MAY FILL (only where base_eln.txt has null)
 - Sample.name: see rule 9
 - experiment_description: see rule 10
 - scan_mode: see rule 7
+
+# NXstm
+
+TECHNIQUE
+Technique: STM (scanning tunneling microscopy). Application definition: NXstm.
+- scan_mode: exactly one of these values, as written here:
+
+# NXsts
+
+TECHNIQUE
+Technique: STS (scanning tunneling spectroscopy). Application definition: NXsts.
+- scan_mode: exactly one of these values, as written here:
+   constant height, constant current, constant spacing
+- experiment_description: say which spectra were measured.
+
+# NXafm
+
+TECHNIQUE
+Technique: AFM (atomic force microscopy). Application definition: NXafm.
+- scan_mode: exactly one of these values, as written here:
+   contact mode, tapping mode, non-contact mode, peak force tapping mode
+
+# Output
 
 OUTPUT FORMAT
 Answer with exactly two fenced YAML blocks and nothing else.
