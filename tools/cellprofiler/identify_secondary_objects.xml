@@ -1,0 +1,493 @@
+<tool id="cp_identify_secondary_objects" name="IdentifySecondaryObjects" version="@CP_VERSION@+galaxy@VERSION_SUFFIX@">
+    <description>with CellProfiler</description>
+
+    <macros>
+        <import>macros.xml</import>
+        <token name="@VERSION_SUFFIX@">2</token>
+
+        <xml name="iso_common">
+            <param name="input_primary_objects" type="text" label="Enter the name of the primary objects">
+                <expand macro="text_validator" />
+            </param>
+            <param name="input_from_nat" type="text" label="Enter the name of the input image">
+                <expand macro="text_validator" />
+            </param>
+            <param name="name_to_be_identified" type="text" label="Enter the name of the secondary objects to be identified">
+                <expand macro="text_validator" />
+            </param>
+            <param name="name_new_primary_object" type="text" label="Name the new primary object">
+                <expand macro="text_validator" />
+            </param>
+
+            <conditional name="con_method_params">  
+                <param name="method" type="select" label="Method to identify secondary objects">
+                    <help>
+                        <![CDATA[
+                        Select the method for identification:
+                        <br> - Propagation: This method will find dividing lines between clumped objects where the image stained for secondary objects shows a change in staining (i.e., either a dimmer or a brighter line). 
+                        <br> - Distance - N: In this method, the image of the secondary staining is not used at all; the expanded objects are the final secondary objects.
+                        <br> - Distance - B: Thresholding of the secondary staining image is used to eliminate background regions from the secondary objects. This allows the extent of the secondary objects to be limited to a certain distance away from the edge of the primary objects without including regions of background.
+                        ]]>
+                    </help>
+                    <option value="Propagation" selected="true">Propagation</option>
+                    <option value="Distance - N">Distance - N</option>
+                    <option value="Distance - B">Distance - B</option>
+                </param>
+                    <when value="Propagation">
+                        <param name="regularization_factor" type="float" value="0.10" min="0.0" max="1.0" label="Regularization factor (0–1)"/>
+                    </when>
+                    <when value="Distance - N">
+                        <param name="distance_to_expand" type="integer" value="10" min="0" label="Number of pixels to expand objects"/>
+                    </when>
+                    <when value="Distance - B">
+                        <param name="distance_to_expand" type="integer" value="10" min="0" label="Number of pixels to expand objects"/>
+                    </when>
+                </conditional>
+            
+
+
+            <param name="discard_touching_border" type="select" display="radio" label="Discard secondary objects touching the border of the image?">
+                <option value="Yes">Yes</option>
+                <option value="No" selected="true">No</option>
+            </param>       
+            <param name="discard_objects" label="Discard the associated primary objects?" type="select" help="Select 'Yes' to measure only those pixels within an object type you choose, identified by a prior tool. Note that this module will aggregate intensities across all objects in the image: to measure each object individually, see MeasureObjectIntensity instead. ">
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+            </param>
+            <param name="fill_holes" label="Fill the holes?" type="select" help="Select 'Yes' to measure only those pixels within an object type you choose, identified by a prior tool. Note that this module will aggregate intensities across all objects in the image: to measure each object individually, see MeasureObjectIntensity instead. ">
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+            </param>
+        </xml>
+
+        <xml name="otsu_threshold_category">
+            <conditional name="con_threshold_class">
+                <param name="threshold_class" type="select" label="Two-class or three-class thresholding?">
+                    <help>
+                        <![CDATA[
+                            - Two classes: Select this option if the grayscale levels are readily distinguishable into only two classes: foreground (i.e., regions of interest) and background.
+                            <br> - Three classes: Choose this option if the grayscale levels fall instead into three classes: foreground, background and a middle intensity between the two. You will then be asked whether the middle intensity class should be added to the foreground or background class in order to generate the final two-class output.
+                            ]]>
+                    </help>
+                    <option value="Two classes">Two classes</option>
+                    <option value="Three classes">Three classes</option>
+                </param>
+                <when value="Three classes">
+                    <param name="assign_pixel" type="select" label="Assign pixels in the middle intensity class to the foreground or the background?" help="Choose whether you want the pixels with middle grayscale intensities to be assigned to the foreground class or the background class.">
+                        <option value="Foreground">Foreground</option>
+                        <option value="Background">Background</option>
+                    </param>
+                </when>
+                <when value="Two classes" />
+            </conditional>
+        </xml>
+
+        <xml name="threshold_values">
+       <param name="threshold_correction_factor" type="float" value="1.0" min="0.0" label="Threshold correction factor">
+                <help>
+                    <![CDATA[
+                        The value entered here adjusts the threshold either upwards or downwards, by multiplying it by this value.
+                        A value of 1 means no adjustment, 0 to 1 makes the threshold more lenient and greater than 1 makes the threshold more stringent.
+                        ]]>
+                </help>
+            </param>
+            <param name="threshold_lower" type="float" value="0.0" min="0.0" max="1.0" label="Lower bound on threshold">
+                <help>
+                    <![CDATA[
+                        This is helpful as a safety precaution: when the threshold as calculated automatically is clearly outside a reasonable range, the min/max allowable threshold will override the automatic threshold.
+                        ]]>
+                </help>
+            </param>
+            <param name="threshold_upper" type="float" value="1.0" min="0.0" max="1.0" label="Upper bound on threshold"/>
+        </xml>
+
+        <xml name="threshold_smoothing_scale">
+            <param name="threshold_smoothing_scale" type="float" value="1.3488" label="Threshold smoothing scale">
+                <help>
+                    <![CDATA[
+                        This setting controls the scale used to smooth the input image before the threshold is applied.
+                        The input image can be optionally smoothed before being thresholded.
+                        Smoothing can improve the uniformity of the resulting objects, by removing holes and jagged edges caused by noise in the acquired image.
+                        Smoothing is most likely not appropriate if the input image is binary, if it has already been smoothed or if it is an output of a pixel-based classifier.
+                        The scale should be approximately the size of the artifacts to be eliminated by smoothing.
+                        A Gaussian is used with a sigma adjusted so that 1/2 of the Gaussian’s distribution falls within the diameter given by the scale (sigma = scale / 0.674) Use a value of 0 for no smoothing.
+                        Use a value of 1.3488 for smoothing with a sigma of 1.
+                        ]]>
+                </help>
+            </param>
+        </xml>
+
+        <xml name="threshold_method_help">
+            <help>
+                <![CDATA[
+                    The intensity threshold affects the decision of whether each pixel will be considered foreground (region(s) of interest) or background.
+                    A higher threshold value will result in only the brightest regions being identified, whereas a lower threshold value will include dim regions.
+                    When using the strategy "Global", you can have the threshold automatically calculated from a choice of several methods, however, when you choose "Adaptive" as the thresholding strategy, your only option is Otsu automatic thresholding.
+                    The threshold that is used for each image is recorded as a per-image measurement, so if you are surprised by unusual measurements from one of your images, you might check whether the automatically calculated threshold was unusually high or low compared to the other images. See the FlagImage module if you would like to flag an image based on the threshold value.
+
+                    <br> - Otsu: This approach calculates the threshold separating the two classes of pixels (foreground and background) by minimizing the variance within the each class.
+                    ]]>
+            </help>
+        </xml>
+    </macros>
+
+    <edam_operations>
+        <edam_operation>operation_3443</edam_operation>
+    </edam_operations>
+    <xrefs>
+        <xref type="bio.tools">CellProfiler</xref>
+        <xref type="biii">cellprofiler</xref>
+    </xrefs>
+
+    <expand macro="py_requirements"/>
+    <expand macro="cmd_modules" />
+
+    <configfiles>
+        <inputs name="inputs" />
+
+        <configfile name="script_file">
+import json, sys
+
+FOURSPACES=@SPACES@
+
+input_json_path = sys.argv[1]
+input_pipeline  = sys.argv[2]
+
+params = json.load(open(input_json_path, "r"))
+iso = params['con_advanced']
+adv = iso['advanced']
+
+def write_iso():
+    _str = "\nIdentifySecondaryObjects:[module_num:%d|svn_version:\\'Unknown\\'|variable_revision_number:13|show_window:True|notes:\\x5B\\'Identify whole cells from a cytoplasm/membrane image using nuclei as seeds.\\'\\x5D|batch_state:array(\\x5B\\x5D, dtype=uint8)|enabled:True|wants_pause:False]\n" % new_count
+
+    _str += FOURSPACES + "Select the input objects:%s\n" % iso['input_primary_objects']
+    _str += FOURSPACES + "Name the objects to be identified:%s\n" % iso['name_to_be_identified']
+    
+
+    
+    method = iso['con_method_params']['method']
+    _str += FOURSPACES + "Select the method to identify the secondary objects:%s\n" % method
+
+    regularization_factor = 0.10
+    distance_to_expand = 10
+    if 'con_method_params' in iso:
+        if method == "Propagation":
+            regularization_factor = iso['con_method_params'].get('regularization_factor', 0.10)
+        elif method == "Distance - N":
+            distance_to_expand = iso['con_method_params'].get('distance_to_expand', 10)
+        elif method == "Distance - B":
+            distance_to_expand = iso['con_method_params'].get('distance_to_expand', 10)
+
+    # Defaults if not advanced
+    threshold_strategy           = "Global"
+    threshold_method             = "Otsu"
+    threshold_smoothing_scale    = 1.3488
+    threshold_correction_factor  = 1.0
+    threshold_lower              = 0.0
+    threshold_upper              = 1.0
+    threshold_class              = "Three classes"
+    assign_pixel                 = "Foreground"
+    adaptive_window              = 50
+    lower_outlier_fraction       = 0.05
+    upper_outlier_fraction       = 0.05
+    avg_method                   = "Mean"
+    variance_method              = "Standard deviation"
+    no_of_deviation              = 2.0
+    manual_threshold             = 0.0
+    threshold_measurement        = "None"
+
+    if adv == "Yes":
+        ts = iso['con_threshold_strategy']
+        threshold_strategy = ts['threshold_strategy']
+        tm = ts['con_threshold_method']['threshold_method']
+
+        threshold_method = tm
+
+        if threshold_strategy == "Adaptive":
+            adaptive_window = ts['adaptive_window']
+            threshold_smoothing_scale = ts['threshold_smoothing_scale']
+            threshold_correction_factor = ts['threshold_correction_factor']
+            threshold_lower = ts['threshold_lower']
+            threshold_upper = ts['threshold_upper']
+            if 'con_threshold_class' in ts['con_threshold_method']:
+                threshold_class = ts['con_threshold_method']['con_threshold_class']['threshold_class']
+                if threshold_class == "Three classes":
+                    assign_pixel = ts['con_threshold_method']['con_threshold_class']['assign_pixel']
+        else:
+            # Global sub-modes
+            cm = ts['con_threshold_method']
+            if threshold_method == "Manual":
+                manual_threshold = cm['manual_threshold']
+            elif threshold_method == "Measurement":
+                threshold_measurement = cm['global_measurement_threshold_cat'] + "_" + cm['global_measurement_threshold_measurement']
+                threshold_correction_factor = cm.get('threshold_correction_factor', 1.0)
+                threshold_lower = cm.get('threshold_lower', 0.0)
+                threshold_upper = cm.get('threshold_upper', 1.0)
+            elif threshold_method == "Otsu":
+                if 'con_threshold_class' in cm:
+                    threshold_class = cm['con_threshold_class']['threshold_class']
+                    if threshold_class == "Three classes":
+                        assign_pixel = cm['con_threshold_class']['assign_pixel']
+                threshold_smoothing_scale = cm.get('threshold_smoothing_scale', 1.3488)
+                threshold_correction_factor = cm.get('threshold_correction_factor', 1.0)
+                threshold_lower = cm.get('threshold_lower', 0.0)
+                threshold_upper = cm.get('threshold_upper', 1.0)
+            elif threshold_method == "Cross entropy":
+                threshold_smoothing_scale = cm.get('threshold_smoothing_scale', 1.3488)
+                threshold_correction_factor = cm.get('threshold_correction_factor', 1.0)
+                threshold_lower = cm.get('threshold_lower', 0.0)
+                threshold_upper = cm.get('threshold_upper', 1.0)
+            elif threshold_method == "RobustBackground":
+                threshold_smoothing_scale = cm.get('threshold_smoothing_scale', 1.3488)
+                lower_outlier_fraction = cm['lower_outlier_fraction']
+                upper_outlier_fraction = cm['upper_outlier_fraction']
+                avg_method = cm['avg_method']
+                variance_method = cm['variance_method']
+                no_of_deviation = cm['no_of_deviations']
+                threshold_correction_factor = cm.get('threshold_correction_factor', 1.0)
+                threshold_lower = cm.get('threshold_lower', 0.0)
+                threshold_upper = cm.get('threshold_upper', 1.0)
+
+    # Write threshold block (mirrors primary so pipelines remain consistent)
+    _str += FOURSPACES + "Select the input image:%s\n" % iso['input_from_nat']
+    _str += FOURSPACES + "Number of pixels by which to expand the primary objects:%d\n" % distance_to_expand
+    _str += FOURSPACES + "Regularization factor:%.4f\n" % regularization_factor
+    _str += FOURSPACES + "Discard secondary objects touching the border of the image?:%s\n" % iso['discard_touching_border']
+    _str += FOURSPACES + "Discard the associated primary objects?:%s\n" % iso['discard_objects']
+    _str += FOURSPACES + "Name the objects to be identified:%s\n" % iso['name_new_primary_object']
+    _str += FOURSPACES + "Fill holes in identified objects?:%s\n" % iso['fill_holes']
+    _str += FOURSPACES + "Threshold settings version:10\n"
+    _str += FOURSPACES + "Threshold strategy:%s\n" % threshold_strategy
+    _str += FOURSPACES + "Thresholding method:%s\n" % threshold_method
+    _str += FOURSPACES + "Threshold smoothing scale:%.4f\n" % threshold_smoothing_scale
+    _str += FOURSPACES + "Threshold correction factor:%.3f\n" % threshold_correction_factor
+    _str += FOURSPACES + "Lower and upper bounds on threshold:%.4f,%.4f\n" % (threshold_lower, threshold_upper)
+    _str += FOURSPACES + "Manual threshold:%s\n" % str(manual_threshold)
+    _str += FOURSPACES + "Select the measurement to threshold with:%s\n" % threshold_measurement
+    _str += FOURSPACES + "Two-class or three-class thresholding?:%s\n" % threshold_class
+    _str += FOURSPACES + "Assign pixels in the middle intensity class to the foreground or the background?:%s\n" % assign_pixel
+    _str += FOURSPACES + "Size of adaptive window:%d\n" % adaptive_window
+    _str += FOURSPACES + "Lower outlier fraction:%.2f\n" % lower_outlier_fraction
+    _str += FOURSPACES + "Upper outlier fraction:%.2f\n" % upper_outlier_fraction
+    _str += FOURSPACES + "Averaging method:%s\n" % avg_method
+    _str += FOURSPACES + "Variance method:%s\n" % variance_method
+    _str += FOURSPACES + "# of deviations:%.2f\n" % no_of_deviation
+
+    # Duplicate key (as in your primary) for .cppipe compatibility
+    _str += FOURSPACES + "Thresholding method:%s\n" % threshold_method
+    return _str
+
+with open(input_pipeline) as fin:
+    lines = fin.readlines()
+    k, v = lines[4].strip().split(':')
+    module_count = int(v)
+    new_count = module_count + 1
+    lines[4] = k + ":%d\n" % new_count
+    with open("output.cppipe", "w") as f:
+        f.writelines(lines)
+        f.write(write_iso())
+        </configfile>
+    </configfiles>
+
+    <inputs>
+        <expand macro="input_pipeline_param" />
+        <conditional name="con_advanced">
+            <param name="advanced" type="select" label="Use advanced settings?">
+                <option value="No">No, use basic settings</option>
+                <option value="Yes">Yes, use advanced settings</option>
+            </param>
+
+            <when value="No">
+                <expand macro="iso_common" />
+                
+            </when>
+
+            <when value="Yes">
+                <expand macro="iso_common" />
+
+                <conditional name="con_threshold_strategy">
+                    <param name="threshold_strategy" type="select" label="Threshold strategy">
+                        <expand macro="threshold_method_help"/>
+                        <option value="Global" selected="true">Global</option>
+                        <option value="Adaptive">Adaptive</option>
+                    </param>
+
+                    <when value="Adaptive">
+                        <conditional name="con_threshold_method">
+                            <param name="threshold_method" type="select" label="Thresholding method">
+                                <option value="Otsu" selected="True">Otsu</option>
+                            </param>
+                            <when value="Otsu">
+                                <expand macro="otsu_threshold_category" />
+                            </when>
+                        </conditional>
+                        <param name="adaptive_window" type="integer" label="Size of the adaptive window" value="50" />
+                        <expand macro="threshold_smoothing_scale" />
+                        <expand macro="threshold_values" />
+                    </when>
+
+                    <when value="Global">
+                        <conditional name="con_threshold_method">
+                            <param name="threshold_method" type="select" label="Thresholding method">
+                                <expand macro="threshold_method_help"/>
+                                <option value="Manual">Manual</option>
+                                <option value="Measurement">Measurement</option>
+                                <option value="Cross entropy">Cross entropy</option>
+                                <option value="Otsu" selected="True">Otsu</option>
+                                <option value="RobustBackground">Robust background</option>
+                            </param>
+
+                            <when value="Otsu">
+                                <expand macro="otsu_threshold_category" />
+                                <expand macro="threshold_smoothing_scale" />
+                                <expand macro="threshold_values" />
+                            </when>
+
+                            <when value="Manual">
+                                <param name="manual_threshold" type="float" min="0" max="1" value="0" label="Absolute threshold value" />
+                            </when>
+
+                            <when value="RobustBackground">
+                                <param name="lower_outlier_fraction" type="float" value="0.05" min="0.0" max="1.0" label="Lower outlier fraction" />
+                                <param name="upper_outlier_fraction" type="float" value="0.05" min="0.0" max="1.0" label="Upper outlier fraction" />
+                                <param name="avg_method" type="select" label="Averaging method">
+                                    <option value="Mean">Mean</option>
+                                    <option value="Median">Median</option>
+                                    <option value="Mode">Mode</option>
+                                </param>
+                                <param name="variance_method" type="select" label="Variance">
+                                    <option value="Standard deviation">Standard deviation</option>
+                                    <option value="Median absolute deviation">Median absolute deviation</option>
+                                </param>
+                                <param name="no_of_deviations" type="float" value="2.0" label="# of deviations" />
+                                <expand macro="threshold_smoothing_scale" />
+                                <expand macro="threshold_values" />
+                            </when>
+
+                            <when value="Measurement">
+                                <param name="global_measurement_threshold_cat" type="select" label="Measurement category">
+                                    <option value="FileName">File Name</option>
+                                    <option value="Frame">Frame</option>
+                                    <option value="Height">Height</option>
+                                    <option value="MD5Digest">MD5Digest</option>
+                                    <option value="PathName">Path Name</option>
+                                    <option value="Scaling">Scaling</option>
+                                    <option value="Series">Series</option>
+                                    <option value="URL">URL</option>
+                                    <option value="Width">Width</option>
+                                </param>
+                                <param name="global_measurement_threshold_measurement" type="text" label="Measurement name" />
+                                <expand macro="threshold_values" />
+                            </when>
+
+                            <when value="Cross entropy">
+                                <expand macro="threshold_smoothing_scale" />
+                                <expand macro="threshold_values" />
+                            </when>
+                        </conditional>
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <expand macro="output_pipeline_param" />
+    </outputs>
+
+    <tests> 
+        <test>
+            <expand macro="test_input_pipeline_param" />
+            <conditional name="con_advanced">
+                <param name="advanced" value="No" />
+                <param name="input_primary_objects" value="Nuclei" />
+                <param name="input_from_nat" value="Cytoplasm" />
+                <param name="name_to_be_identified" value="Cells" />
+                <param name="name_new_primary_object" value="TestName" />
+                <conditional name="con_method_params">
+                    <param name="method" value="Propagation" />
+                    <param name="regularization_factor" value="0.10" />
+                </conditional>
+                <param name="discard_touching_border" value="No" />
+                <param name="discard_objects" value="Yes" />
+                <param name="fill_holes" value="Yes" />
+            </conditional>
+            <expand macro="test_out_file" file="identify_secondary_objects_basic.cppipe" />
+        </test>
+
+        <test>
+            <expand macro="test_input_pipeline_param" />
+            <conditional name="con_advanced">
+                <param name="advanced" value="Yes" />
+                <param name="input_primary_objects" value="Nuclei" />
+                <param name="input_from_nat" value="Cytoplasm" />
+                <param name="name_to_be_identified" value="Cells" />
+                <param name="name_new_primary_object" value="TestName" />
+                <conditional name="con_method_params">
+                    <param name="method" value="Propagation" />
+                    <param name="regularization_factor" value="0.08" />
+                </conditional>
+                <param name="discard_touching_border" value="Yes" />
+                <param name="discard_objects" value="Yes" />
+                <param name="fill_holes" value="Yes" />
+
+                <conditional name="con_threshold_strategy">
+                    <param name="threshold_strategy" value="Adaptive" />
+                    <conditional name="con_threshold_method">
+                        <param name="threshold_method" value="Otsu" />
+                        <conditional name="con_threshold_class">
+                            <param name="threshold_class" value="Three classes" />
+                            <param name="assign_pixel" value="Foreground" />
+                        </conditional>
+                    </conditional>
+                    <param name="adaptive_window" value="50" />
+                    <param name="threshold_smoothing_scale" value="1.5" />
+                    <param name="threshold_correction_factor" value="1" />
+                    <param name="threshold_lower" value="0.0" />
+                    <param name="threshold_upper" value="1.0" />
+                </conditional>
+            </conditional>
+            <expand macro="test_out_file" file="identify_secondary_objects_adv_adaptive_otsu.cppipe" />
+        </test>
+
+        <test>
+            <expand macro="test_input_pipeline_param" />
+            
+            <conditional name="con_advanced">
+                <param name="advanced" value="Yes" />
+                <param name="input_primary_objects" value="Nuclei" />
+                <param name="input_from_nat" value="Membrane" />
+                <param name="name_to_be_identified" value="Cells" />
+                <param name="name_new_primary_object" value="TestName" />
+                <conditional name="con_method_params">
+                    <param name="method" value="Distance - N" />
+                    <param name="distance_to_expand" value="8" />
+                </conditional>
+                <param name="discard_touching_border" value="No" />
+                <param name="discard_objects" value="Yes" />
+                <param name="fill_holes" value="Yes" />
+                <conditional name="con_threshold_strategy">
+                    <param name="threshold_strategy" value="Global" />
+                    <conditional name="con_threshold_method">
+                        <param name="threshold_method" value="Manual" />
+                        <param name="manual_threshold" value="0.4" />
+                    </conditional>
+                </conditional>
+            </conditional>
+            <expand macro="test_out_file" file="identify_secondary_objects_adv_global_manual.cppipe" />
+        </test>
+    </tests>
+
+    <help>
+        <![CDATA[
+        **What it does**
+
+        Identifies **secondary objects** (e.g., whole cells) by expanding from **primary objects** (e.g., nuclei).
+
+        @COMMON_HELP@
+        ]]>
+    </help>
+
+    <expand macro="citations" />
+</tool>
+
