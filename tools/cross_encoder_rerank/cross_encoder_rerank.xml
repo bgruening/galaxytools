@@ -4,6 +4,9 @@
         <token name="@TOOL_VERSION@">0.1.0</token>
         <token name="@VERSION_SUFFIX@">0</token>
     </macros>
+    <creator>
+        <person givenName="Nikos" familyName="Kapralos" url="https://orcid.org/0009-0009-0081-717X" />
+    </creator>
     <requirements>
         <requirement type="package" version="3.12">python</requirement>
         <requirement type="package" version="6.3.0">sentence-transformers</requirement>
@@ -13,6 +16,9 @@
         <requirement type="package" version="2.4.0">huggingface_hub</requirement>
         <resource type="cores_min">4</resource>
     </requirements>
+    <required_files>
+        <include type="literal" path="cross_encoder_rerank.py" />
+    </required_files>
     <command detect_errors="exit_code"><![CDATA[
         python '$__tool_directory__/cross_encoder_rerank.py'
             --input '$input'
@@ -20,7 +26,11 @@
             --id-field '${id_field or ""}'
             --title-field '${title_field or ""}'
             --text-field '${text_field or ""}'
-            --model '$reranker_model'
+            #if $reranker.choice == 'custom'
+                --model '$reranker.custom_model'
+            #else
+                --model '$reranker.choice'
+            #end if
             #if $source.query_source == 'field'
                 --query-field '$source.query_field'
             #end if
@@ -34,10 +44,26 @@
                help="JSON Lines, one object per paragraph, with a &quot;spans&quot; list. Every span needs a description and a list of candidate ids, for example from the embedding search step." />
         <param name="metadata" type="data" format="txt" label="Knowledge-base metadata (JSON Lines)"
                help="The same file that was used for the search, for example topostext_metadata.jsonl. It gives the text of every candidate." />
-        <param name="reranker_model" type="text" value="Qwen/Qwen3-Reranker-0.6B" label="Reranker model"
-               help="Any cross-encoder on Hugging Face that sentence-transformers can load, for example Qwen/Qwen3-Reranker-0.6B or cross-encoder/ms-marco-MiniLM-L6-v2. Bigger models are better but much slower on a CPU.">
-            <validator type="regex" message="Use the form owner/name, for example Qwen/Qwen3-Reranker-0.6B.">^[A-Za-z0-9][\w.-]*(/[\w.-]+)?$</validator>
-        </param>
+        <conditional name="reranker">
+            <param name="choice" type="select" label="Reranker model"
+                   help="Small models that run on a CPU. Bigger models are better but much slower.">
+                <option value="Qwen/Qwen3-Reranker-0.6B" selected="true">Qwen/Qwen3-Reranker-0.6B (0.6B, default)</option>
+                <option value="cross-encoder/ms-marco-MiniLM-L6-v2">cross-encoder/ms-marco-MiniLM-L6-v2 (22M, very fast, English)</option>
+                <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3 (0.6B, multilingual)</option>
+                <option value="mixedbread-ai/mxbai-rerank-large-v1">mixedbread-ai/mxbai-rerank-large-v1 (0.4B, English)</option>
+                <option value="custom">Other: type the name of a Hugging Face model</option>
+            </param>
+            <when value="Qwen/Qwen3-Reranker-0.6B" />
+            <when value="cross-encoder/ms-marco-MiniLM-L6-v2" />
+            <when value="BAAI/bge-reranker-v2-m3" />
+            <when value="mixedbread-ai/mxbai-rerank-large-v1" />
+            <when value="custom">
+                <param name="custom_model" type="text" label="Hugging Face model"
+                       help="Use a reranker (cross-encoder) model that is compatible with the sentence-transformers library, in the form owner/name. Other models can load without an error but give meaningless scores.">
+                    <validator type="regex" message="Use the form owner/name, for example BAAI/bge-reranker-v2-m3.">^[A-Za-z0-9][\w.-]*(/[\w.-]+)?$</validator>
+                </param>
+            </when>
+        </conditional>
         <param name="id_field" type="text" value="toposid" optional="true" label="ID field in the metadata"
                help="The field that identifies an entry. Leave empty to use the line number (starting at 0), as the search step does when its ID field is empty.">
             <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
@@ -79,7 +105,9 @@
         <test expect_num_outputs="1">
             <param name="input" value="rows_candidates.jsonl" ftype="txt" />
             <param name="metadata" value="places_metadata.jsonl" ftype="txt" />
-            <param name="reranker_model" value="cross-encoder/ms-marco-MiniLM-L6-v2" />
+            <conditional name="reranker">
+                <param name="choice" value="cross-encoder/ms-marco-MiniLM-L6-v2" />
+            </conditional>
             <conditional name="source">
                 <param name="query_source" value="field" />
                 <param name="query_field" value="recontext" />
@@ -96,7 +124,10 @@
         <test expect_num_outputs="1">
             <param name="input" value="rows_candidates.jsonl" ftype="txt" />
             <param name="metadata" value="places_metadata.jsonl" ftype="txt" />
-            <param name="reranker_model" value="cross-encoder/ms-marco-MiniLM-L6-v2" />
+            <conditional name="reranker">
+                <param name="choice" value="custom" />
+                <param name="custom_model" value="cross-encoder/ms-marco-MiniLM-L6-v2" />
+            </conditional>
             <output name="output">
                 <assert_contents>
                     <has_n_lines n="1" />
