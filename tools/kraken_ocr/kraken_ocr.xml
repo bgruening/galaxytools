@@ -25,6 +25,7 @@
         #if $is_collection
             #set $pairs = $input_type.input_source.segmentation_collection
             mkdir -p results &&
+            cp '$collection_metadata' galaxy.json &&
         #else
             #set $pairs = [None]
         #end if
@@ -88,6 +89,21 @@
             #end if
     ]]></command>
     <expand macro="env_vars"/>
+    <configfiles>
+        <configfile name="collection_metadata"><![CDATA[
+#import json
+#set $native_out_ext = 'txt'
+@SET_OUTPUT_EXTENSION@
+#set $elements = []
+#if $input_type.source == 'segmented' and $input_type.input_source.source == 'collection'
+    #set $output_datatype = 'hocr' if $out_ext == 'html' else $out_ext
+    #for $i, $pair in enumerate($input_type.input_source.segmentation_collection)
+        #silent $elements.append({'name': str($pair.element_identifier), 'filename': 'results/page_%06d.%s' % ($i, $out_ext), 'ext': $output_datatype})
+    #end for
+#end if
+$json.dumps({'paired_output': {'elements': $elements}})
+        ]]></configfile>
+    </configfiles>
     <inputs>
         <conditional name="input_type">
             <param name="source" type="select" label="Input type" help="Select whether the input is a pre-segmented image with text regions or a single line image">
@@ -163,7 +179,7 @@
     <expand macro="segment_ocr_outputs" native_format="txt" input_image="(input_type['image'] if input_type['source'] == 'line' else input_type['input_source']['image'])" single_input="(input_type['source'] == 'line' or input_type['input_source']['source'] == 'individual')">
         <collection name="paired_output" type="list" label="${tool.name} paired images on ${on_string}">
             <filter>input_type['source'] == 'segmented' and input_type['input_source']['source'] == 'collection'</filter>
-            <expand macro="discover_ocr_outputs" native_format="txt" directory="results"/>
+            <discover_datasets from_provided_metadata="true"/>
         </collection>
     </expand>
     <tests>
@@ -282,7 +298,7 @@
         </test>
         <test expect_num_outputs="1">
             <expand macro="use_presegmented_collection" segmentation="input_binarized_seg_alto.xml" segmentation_ftype="alto">
-                <element name="page_two">
+                <element name="page two/scan.002">
                     <collection type="paired">
                         <element name="forward" value="input_binarized.png" ftype="png"/>
                         <element name="reverse" value="input_binarized_seg_page.xml" ftype="page.xml"/>
@@ -292,16 +308,16 @@
             <expand macro="get_document_ocr_model"/>
             <param name="output_format_flag" value="-n"/>
             <assert_command>
-                <has_text text="kraken --device" n="1"/>
+                <has_text_matching expression="\bkraken\s+--device\b" n="1"/>
                 <has_text text="--input 'input_0/segmentation.xml' 'results/page_000000.txt'"/>
                 <has_text text="--input 'input_1/segmentation.xml' 'results/page_000001.txt'"/>
                 <has_text text="--model" n="1"/>
             </assert_command>
             <output_collection name="paired_output" type="list" count="2">
-                <element name="page_000000" ftype="txt">
+                <element name="page_one" ftype="txt">
                     <assert_contents><has_text text="HISTOIRE"/></assert_contents>
                 </element>
-                <element name="page_000001" ftype="txt">
+                <element name="page two/scan.002" ftype="txt">
                     <assert_contents><has_text text="HISTOIRE"/></assert_contents>
                 </element>
             </output_collection>
@@ -333,6 +349,8 @@ Select an individual image and segmentation, or provide a `list:paired` collecti
 
 - **forward**: source image in PNG, JPEG, or TIFF format
 - **reverse**: corresponding ALTO or PAGE XML segmentation
+
+The output collection preserves the input pair identifiers and their order.
 
 The OCR process requires a pre-trained model. You can either upload your own model in
 [mlmodel](https://apple.github.io/coremltools/mlmodel/index.html) or
