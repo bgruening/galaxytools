@@ -1,16 +1,20 @@
-# pynxtools_dataconverter
+# pynxtools_spm
 
-Converts one raw file and its ELN to a NeXus file with
-[pynxtools](https://github.com/FAIRmat-NFDI/pynxtools) and a reader plugin, chosen in the `reader`
-select. Today: `spm` from [pynxtools-spm](https://github.com/FAIRmat-NFDI/pynxtools-spm), in the
-public pynxtools-spm container. A new reader is one more case of that select, with its definitions.
+The tools that need [pynxtools-spm](https://github.com/FAIRmat-NFDI/pynxtools-spm). They share one
+environment and one version, the pynxtools-spm version. Another pynxtools plugin gets its own folder
+like this one.
+
+## Converter
+
+`pynxtools_spm_converter` converts one raw file and its ELN to a NeXus file with
+[pynxtools](https://github.com/FAIRmat-NFDI/pynxtools) and the `spm` reader.
 A file that cannot be converted gives a status JSON with the reason; the job still succeeds.
 
 ## Raw file header
 
-`raw_file_header` writes a raw file's header as text for the ELN tools. It reads the file with
+`raw_file_header` writes a raw file's header (metadata) as JSON for the ELN tools. It reads the file with
 [gwyddionpy](https://github.com/FAIRmat-NFDI/gwyddionPy) (many SPM formats, also binary ones) in the
-same container; files gwyddionpy cannot read give their leading text.
+same environment; files gwyddionpy cannot read give their leading text.
 
 ## Tests
 
