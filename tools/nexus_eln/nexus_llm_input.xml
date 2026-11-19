@@ -1,30 +1,26 @@
 <tool id="nexus_llm_input" name="NeXus ELN LLM input" version="@LLM_INPUT_VERSION@+galaxy@LLM_INPUT_SUFFIX@" profile="@PROFILE@">
-    <description>for one SPM file: instructions, base ELN and context texts</description>
+    <description>for one raw file: instructions, base ELN, header and context texts</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements_eln"/>
     <required_files>
         <include path="nexus_llm_input.py"/>
-        <include path="nexus_eln_builder.py"/>
-        <include path="eln_rules.yaml"/>
-        <include type="glob" path="eln_instructions/*.txt"/>
     </required_files>
     <version_command>echo @LLM_INPUT_VERSION@</version_command>
     <command detect_errors="exit_code"><![CDATA[
+        @LINK_INSTRUCTIONS@
         python '$__tool_directory__/nexus_llm_input.py'
         '$bundle'
         '$eln'
-        #if $raw:
-            --raw '$raw'
-        #end if
+        @PLUGIN_ARGS@
         --out-dir llm_context
         --report '$llm_input_report'
     ]]></command>
     <inputs>
         <param name="bundle" type="data" format="json" label="Context bundle" help="Written by the Zenodo download and unzip tool: record metadata and the text of one raw file's context files, PDF text included."/>
         <param name="eln" type="data" format="yaml" label="Rule ELN" help="Written by the NeXus ELN builder for the same raw file. Its values are kept; the LLM fills only the empty fields."/>
-        <param argument="--raw" type="data" format="binary,txt" optional="true" label="Raw SPM file" help="Optional. The text header of a Nanonis .sxm is added as a context file."/>
+        <expand macro="plugin_inputs"/>
     </inputs>
     <outputs>
         <collection name="llm_context" type="list" label="${bundle.element_identifier}: LLM input">
@@ -34,11 +30,13 @@
     </outputs>
     <tests>
         <!-- Test 01: STM file of Zenodo record 17202182 (CC-BY-4.0): header, readme, PDF text;
-             the broken PDF is left out. Elements are sorted by file name. -->
+             the broken PDF is left out. Elements are sorted by file name. The header is the
+             leading text of a header-only .sxm, which gwyddionpy cannot read. -->
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_17202182.json" ftype="json"/>
             <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
-            <param name="raw" value="T190613_004_header_only.sxm" ftype="binary"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="T190613_004_header.json" ftype="json"/>
             <output_collection name="llm_context" type="list" count="5">
                 <element name="Information.txt" ftype="txt">
                     <assert_contents>
@@ -86,9 +84,14 @@
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_afm.json" ftype="json"/>
             <param name="eln" value="eln_afm.yaml" ftype="yaml"/>
-            <param name="raw" value="afm_header_only.sxm" ftype="binary"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="afm_header.json" ftype="json"/>
             <output_collection name="llm_context" type="list" count="4">
-                <element name="A151216.123306-02602_header.txt" ftype="txt"/>
+                <element name="A151216.123306-02602_header.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text=":SCANIT_END:"/>
+                    </assert_contents>
+                </element>
                 <element name="base_eln.txt" ftype="txt">
                     <assert_contents>
                         <has_text text="definition: NXafm"/>
@@ -108,10 +111,12 @@
                 </element>
             </output_collection>
         </test>
-        <!-- Test 03: STS without context files and without raw file. -->
+        <!-- Test 03: STS without context files and without a header. -->
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_without_context.json" ftype="json"/>
             <param name="eln" value="eln_sts.yaml" ftype="yaml"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="no_header.json" ftype="json"/>
             <output_collection name="llm_context" type="list" count="2">
                 <element name="base_eln.txt" ftype="txt">
                     <assert_contents>
@@ -129,8 +134,14 @@
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_without_context.json" ftype="json"/>
             <param name="eln" value="eln_no_technique.yaml" ftype="yaml"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="no_header.json" ftype="json"/>
             <output_collection name="llm_context" type="list" count="1">
-                <element name="base_eln.txt" ftype="txt"/>
+                <element name="base_eln.txt" ftype="txt">
+                    <assert_contents>
+                        <not_has_text text="definition:"/>
+                    </assert_contents>
+                </element>
             </output_collection>
             <output name="llm_input_report" ftype="json">
                 <assert_contents>
@@ -139,24 +150,68 @@
                 </assert_contents>
             </output>
         </test>
+        <!-- Test 05: a gwyddionpy header is given as JSON; instructions named without extension
+             (as Galaxy may name collection elements) are found too. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="instructions">
+                <collection type="list">
+                    <element name="NXstm" value="eln_instructions/NXstm.txt" ftype="txt"/>
+                </collection>
+            </param>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
+            <output_collection name="llm_context" type="list" count="5">
+                <element name="T190613_004_header.json" ftype="txt">
+                    <assert_contents>
+                        <has_text text="&quot;Z-Controller::Controller status&quot;: &quot;ON&quot;"/>
+                        <has_text text="&quot;read_with&quot;: &quot;gwyddionpy (nanonis)&quot;"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test 06: the instructions must list every allowed value and field of the rules. -->
+        <test expect_failure="true">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="instructions">
+                <collection type="list">
+                    <element name="NXstm.txt" value="eln_instructions/NXafm.txt" ftype="txt"/>
+                </collection>
+            </param>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
+            <assert_stderr>
+                <has_text text="Instructions for NXstm do not match the rules; missing: ['constant height', 'constant current']"/>
+            </assert_stderr>
+        </test>
     </tests>
     <help format="markdown"><![CDATA[
 **What it does**
 
 Writes the input of one [LLM Hub](https://galaxyproject.org/news/2025-10-10-llm-hub/) job for
-one raw SPM file, so an LLM can fill the ELN fields the rule-based ELN builder left empty.
+one raw file, so an LLM can fill the ELN fields the rule-based ELN builder left empty.
+
+The domain knowledge comes from the pynxtools plugin as input files, e.g. the `galaxy/` folder of
+[pynxtools-spm](https://github.com/FAIRmat-NFDI/pynxtools-spm):
+
+- **ELN rules** (`eln_rules.yaml`): definitions, fields the LLM may fill, allowed values.
+- **ELN instructions**: one text file per NeXus definition, named as in the rules (`NXstm.txt`).
+- **Raw file header**: the JSON of the plugin's raw file header tool.
 
 -----
 
 **Outputs**
 
 - **LLM input** (list of text files):
-  - `eln_instructions.txt`: fixed instructions for the ELN's application definition
-    (`NXstm`, `NXsts` or `NXafm`), with its allowed `scan_mode` values.
+  - `eln_instructions.txt`: the instructions for the ELN's application definition. The tool stops
+    if they miss a field or an allowed value of the rules.
   - `base_eln.txt`: the rule ELN. Fields the LLM may fill are `null`; `experiment_description`
     is always `null`, as the LLM writes it (the record text stays in `citeID`).
   - One text file per context file with text; a PDF's text keeps the PDF's name.
-  - `<raw file>_header.txt`: the text header of a Nanonis `.sxm` file.
+  - `<raw file>_header.json`: the raw file's metadata; `<raw file>_header.txt` when the header is
+    the file's leading text. Left out when the header is empty.
 - **LLM input report**: the files written, the files left out (no text, broken PDF) and the
   `Example:` values of the instructions, for the check step.
 

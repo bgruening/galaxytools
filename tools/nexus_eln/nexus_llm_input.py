@@ -1,14 +1,16 @@
 #!/usr/bin/env python
-"""Write the LLM input for one raw SPM file: the files one ``llm_hub`` job reads.
+"""Write the LLM input for one raw file: the files one ``llm_hub`` job reads.
 
 Inputs are the raw file's context bundle (``zenodo_download_unzip``), its rule ELN
-(``nexus_eln_builder``) and, optionally, the raw file. Written to ``--out-dir``:
+(``nexus_eln_builder``), its header (``raw_file_header``), and the rules and
+instructions of the pynxtools plugin. Written to ``--out-dir``:
 
-- ``eln_instructions.txt``: the fixed instructions for the ELN's definition
-  (``eln_instructions/<definition>.txt``, picked through ``eln_rules.yaml``);
+- ``eln_instructions.txt``: the instructions for the ELN's definition (picked through
+  the rules file);
 - ``base_eln.txt``: the rule ELN, with the fields the LLM may fill set to null;
 - one text file per context file with text (a PDF's ``pdf_text``), named after the file;
-- ``<raw file>_header.txt`` for a Nanonis .sxm.
+- ``<raw file>_header.json`` (the header's metadata), or ``<raw file>_header.txt`` when the
+  header is the file's leading text.
 
 Without a definition only ``base_eln.txt`` is written; the check step then keeps the
 rule ELN. The report lists the files, the files left out and the ``Example:`` values.
@@ -23,11 +25,9 @@ import sys
 from pathlib import Path, PurePosixPath
 
 import yaml
-from nexus_eln_builder import sxm_header_text
 
 logger = logging.getLogger("nexus_llm_input")
 
-TOOL_DIR = Path(__file__).resolve().parent
 INSTRUCTIONS_NAME, BASE_ELN_NAME = "eln_instructions.txt", "base_eln.txt"
 BASE_ELN_NOTE = "# Fill only the null fields; keep every other value.\n"
 
@@ -84,13 +84,22 @@ def definition_of(eln, rules):
     return by_technique.get(eln.get("experiment_technique"))
 
 
-def load_instructions(definition, rules):
-    """Instructions text; stops if it misses an allowed value or a field of `eln_rules.yaml`."""
-    text = (TOOL_DIR / rules["definitions"][definition]["instructions"]).read_text(encoding="utf-8")
+def load_instructions(definition, rules, instructions_dir):
+    """Instructions text; stops if it misses an allowed value or a field of the rules.
+
+    The file is looked up in `instructions_dir` by the name in the rules (e.g. `NXstm.txt`),
+    or by that name without its extension, as Galaxy may name collection elements.
+    """
+    name = PurePosixPath(rules["definitions"][definition]["instructions"])
+    paths = [Path(instructions_dir) / name.name, Path(instructions_dir) / name.stem]
+    path = next((path for path in paths if path.is_file()), None)
+    if path is None:
+        sys.exit(f"No instructions {name.name} for {definition} in the instructions input")
+    text = path.read_text(encoding="utf-8")
     needed = rules["definitions"][definition]["scan_mode"] + rules["fill"] + rules["replace"]
     missing = [value for value in needed if value not in text]
     if missing:
-        sys.exit(f"Instructions for {definition} do not match eln_rules.yaml; missing: {missing}")
+        sys.exit(f"Instructions for {definition} do not match the rules; missing: {missing}")
     return text
 
 
@@ -113,7 +122,7 @@ def context_texts(bundle):
     return texts, left_out
 
 
-def write_input(bundle, eln, raw_file, rules, out_dir):
+def write_input(bundle, eln, header, rules, instructions_dir, out_dir):
     """Write the LLM input files to `out_dir`; return the report."""
     raw_path = bundle["raw"]["path"]
     definition = definition_of(eln, rules)
@@ -140,29 +149,42 @@ def write_input(bundle, eln, raw_file, rules, out_dir):
     if not definition:
         logger.warning("No definition for %s; only %s is written", raw_path, BASE_ELN_NAME)
         return report
-    instructions = load_instructions(definition, rules)
+    instructions = load_instructions(definition, rules, instructions_dir)
     write(INSTRUCTIONS_NAME, instructions, "instructions",
           rules["definitions"][definition]["instructions"])
     report["instructions"] = rules["definitions"][definition]["instructions"]
     report["example_values"] = example_values(instructions)
 
-    sources, report["left_out"] = source_files(bundle, raw_file)
+    sources, report["left_out"] = source_files(bundle, header)
     for source in sources:
         write(source["name"], source["text"], source["kind"], source["path"])
     return report
 
 
-def source_files(bundle, raw_file):
+def header_source(header_path):
+    """(suffix, text) of the header file of raw_file_header; None if it holds no header.
+
+    Metadata is given as the JSON file itself; a leading-text header as its plain text.
+    """
+    text = Path(header_path).read_text(encoding="utf-8")
+    header = json.loads(text)
+    if "text" in header:
+        return (".txt", header["text"]) if header["text"].strip() else None
+    return ".json", text
+
+
+def source_files(bundle, header_path):
     """The source files the LLM gets, as dicts (name, kind, path, text), and the files left out.
 
     Also used by nexus_eln_llm_merge to check the quotes against the same texts.
     """
     taken, sources = {INSTRUCTIONS_NAME, BASE_ELN_NAME}, []
     raw_path = bundle["raw"]["path"]
-    header = sxm_header_text(raw_file) if raw_file else None
+    header = header_source(header_path)
     if header:
-        name = unique_name(safe_name(f"{PurePosixPath(raw_path).stem}_header.txt"), taken)
-        sources.append({"name": name, "kind": "header", "path": raw_path, "text": header})
+        suffix, text = header
+        name = unique_name(safe_name(f"{PurePosixPath(raw_path).stem}_header{suffix}"), taken)
+        sources.append({"name": name, "kind": "header", "path": raw_path, "text": text})
     texts, left_out = context_texts(bundle)
     for path, text in texts:
         name = unique_name(safe_name(PurePosixPath(path).name), taken)
@@ -171,11 +193,12 @@ def source_files(bundle, raw_file):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Write the LLM input for one raw SPM file.")
+    parser = argparse.ArgumentParser(description="Write the LLM input for one raw file.")
     parser.add_argument("bundle", help="Context bundle JSON of one raw file.")
     parser.add_argument("eln", help="ELN YAML of the rule builder.")
-    parser.add_argument("--raw", help="The raw file; a Nanonis .sxm header is added as a text file.")
-    parser.add_argument("--rules", default=str(TOOL_DIR / "eln_rules.yaml"))
+    parser.add_argument("--header", required=True, help="Header JSON of the raw file (raw_file_header).")
+    parser.add_argument("--rules", required=True, help="Rules YAML of the pynxtools plugin.")
+    parser.add_argument("--instructions", required=True, help="Folder with the instructions per definition.")
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--report", required=True)
     args = parser.parse_args()
@@ -190,7 +213,7 @@ def main():
     rules = yaml.safe_load(Path(args.rules).read_text(encoding="utf-8"))
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    report = write_input(bundle, eln, args.raw, rules, out_dir)
+    report = write_input(bundle, eln, args.header, rules, args.instructions, out_dir)
     report["total_chars"] = sum(item["chars"] for item in report["files"])
     Path(args.report).write_text(json.dumps(report, indent=2), encoding="utf-8")
     logger.info("LLM input for %s: %d files, %d left out",

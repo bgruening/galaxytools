@@ -7,12 +7,10 @@
     <required_files>
         <include path="nexus_eln_llm_merge.py"/>
         <include path="nexus_llm_input.py"/>
-        <include path="nexus_eln_builder.py"/>
-        <include path="eln_rules.yaml"/>
-        <include type="glob" path="eln_instructions/*.txt"/>
     </required_files>
     <version_command>echo @LLM_MERGE_VERSION@</version_command>
     <command detect_errors="exit_code"><![CDATA[
+        @LINK_INSTRUCTIONS@
         python '$__tool_directory__/nexus_eln_llm_merge.py'
         '$bundle'
         '$eln'
@@ -20,9 +18,7 @@
             --answer '$answer'
             --answer-label '$answer.name'
         #end if
-        #if $raw:
-            --raw '$raw'
-        #end if
+        @PLUGIN_ARGS@
         --out-eln '$merged_eln'
         --report '$eln_llm_report'
     ]]></command>
@@ -30,7 +26,7 @@
         <param name="bundle" type="data" format="json" label="Context bundle" help="The same bundle the LLM input was written from; its texts are the sources the quotes are checked against."/>
         <param name="eln" type="data" format="yaml" label="Rule ELN" help="Written by the NeXus ELN builder. Its values are kept; LLM values only fill its empty fields."/>
         <param argument="--answer" type="data" format="markdown,txt" optional="true" label="LLM answer" help="Optional. One YAML block with the ELN and one with the evidence (see the help below), e.g. an LLM Hub answer. Without it the rule ELN is the output."/>
-        <param argument="--raw" type="data" format="binary,txt" optional="true" label="Raw SPM file" help="Optional. Give it if the LLM input was written with it: the .sxm header is a source."/>
+        <expand macro="plugin_inputs"/>
     </inputs>
     <outputs>
         <data name="merged_eln" format="yaml" label="${bundle.element_identifier}: ELN (eln_data.yaml)"/>
@@ -43,7 +39,8 @@
             <param name="bundle" value="bundle_afm.json" ftype="json"/>
             <param name="eln" value="eln_afm.yaml" ftype="yaml"/>
             <param name="answer" value="answer_afm_checks.md" ftype="markdown"/>
-            <param name="raw" value="afm_header_only.sxm" ftype="binary"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="afm_header.json" ftype="json"/>
             <output name="merged_eln" ftype="yaml">
                 <assert_contents>
                     <has_text text="scan_mode: tapping mode"/>
@@ -83,7 +80,8 @@
             <param name="bundle" value="bundle_17202182.json" ftype="json"/>
             <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
             <param name="answer" value="answer_mistral_medium_3_5.md" ftype="markdown"/>
-            <param name="raw" value="T190613_004_header_only.sxm" ftype="binary"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="T190613_004_header.json" ftype="json"/>
             <output name="merged_eln" ftype="yaml">
                 <assert_contents>
                     <has_text text="experiment_description: Topography and lock-in dI/dV at 50 mV"/>
@@ -107,6 +105,8 @@
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_17202182.json" ftype="json"/>
             <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="T190613_004_header.json" ftype="json"/>
             <output name="merged_eln" ftype="yaml">
                 <assert_contents>
                     <has_text text="scan_mode: constant current"/>
@@ -123,6 +123,8 @@
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_17202182.json" ftype="json"/>
             <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="T190613_004_header.json" ftype="json"/>
             <param name="answer" value="answer_skipped.json" ftype="expression.json"/>
             <output name="merged_eln" ftype="yaml">
                 <assert_contents>
@@ -139,6 +141,8 @@
         <test expect_num_outputs="2">
             <param name="bundle" value="bundle_17202182.json" ftype="json"/>
             <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="T190613_004_header.json" ftype="json"/>
             <param name="answer" value="answer_no_yaml.md" ftype="markdown"/>
             <output name="merged_eln" ftype="yaml">
                 <assert_contents>
@@ -148,6 +152,30 @@
             <output name="eln_llm_report" ftype="json">
                 <assert_contents>
                     <has_json_property_with_value property="status" value="&quot;unparsable&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 06: a gwyddionpy header (JSON) as source: header quotes fill header fields only, and
+             a quote that is only a JSON key is no evidence. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <param name="eln" value="eln_17202182_no_scan_mode.yaml" ftype="yaml"/>
+            <param name="answer" value="answer_header_json.md" ftype="markdown"/>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
+            <output name="merged_eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="scan_mode: constant current"/>
+                    <has_text text="model: Generic 4"/>
+                    <not_has_text text="NbSe2"/>
+                    <not_has_text text="'2.1'"/>
+                </assert_contents>
+            </output>
+            <output name="eln_llm_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="kept" value="[&quot;Instrument.software.model&quot;, &quot;scan_mode&quot;]"/>
+                    <has_json_property_with_value property="reason" value="&quot;header_key_only&quot;"/>
+                    <has_json_property_with_value property="reason" value="&quot;not_a_header_field&quot;"/>
                 </assert_contents>
             </output>
         </test>
@@ -187,16 +215,18 @@ An answer that holds only `null` (a skipped step) counts as no answer.
 
 **Checks per field**
 
-Only the fields of `eln_rules.yaml` are taken: those the rule ELN left empty, and
-`experiment_description`. Every other key of the answer is ignored.
+Only the fields of the **ELN rules** (`eln_rules.yaml` of the pynxtools plugin) are taken: those the
+rule ELN left empty (`fill`), and the `replace` fields. Every other key of the answer is ignored.
 
 - **Evidence:** the quote must be found in a source file (the context texts and the raw file
   header; never the instructions or the base ELN). Typographic dashes and spaces count as plain
-  ones; a quote that is only a header key (`:NANONIS_VERSION:`) is no evidence.
-- **Exact values** (instrument and software model, version, formula): the value must be in its quote.
+  ones; a quote that is only a header key (`"Bias::Bias (V)":`, `:NANONIS_VERSION:`) is no evidence.
+- **Header fields:** a quote found only in the header fills only the rules' `header` fields
+  (e.g. instrument, software, `scan_mode`).
+- **Exact values** (the rules' `literal` fields): the value must be in its quote.
 - **Copied examples:** a value containing an `Example:` value of the instructions is dropped,
   unless a source has it too.
-- **Allowed values:** `scan_mode` must be one of the definition's values.
+- **Allowed values** (the rules' `exact` fields, e.g. `scan_mode`): one of the definition's values.
 - **Clean-up:** formula without spaces and with real element symbols; names in ASCII
   (`β-Bi2 Pd` → `beta-Bi2Pd`).
 

@@ -3,7 +3,7 @@
 
 The answer of an ``llm_hub`` job holds two YAML blocks: the filled ELN and the
 evidence (a quote and a file name per filled field). Only the fields of
-``eln_rules.yaml`` (``fill`` when empty in the rule ELN, and ``replace``) are taken.
+rules file (``fill`` when empty in the rule ELN, and ``replace``) are taken.
 A value is kept when its quote is found in a source file (the same texts that
 ``nexus_llm_input`` wrote) and it passes the field's checks; its form may be cleaned.
 Every kept, dropped or cleaned value is listed in the report. Without a usable answer
@@ -23,7 +23,7 @@ from pathlib import Path
 import yaml
 from nexus_llm_input import (
     BASE_ELN_NAME, definition_of, example_values, has_path, INSTRUCTIONS_NAME,
-    load_instructions, set_path, source_files, TOOL_DIR,
+    load_instructions, set_path, source_files,
 )
 
 logger = logging.getLogger("nexus_eln_llm_merge")
@@ -49,8 +49,9 @@ class Dropped(Exception):
     """A value that fails a check; the message is the reason in the report."""
 
 
-# A ":KEY:" line of a Nanonis .sxm header, e.g. ":NANONIS_VERSION:"; a key alone is no evidence.
-HEADER_KEY = re.compile(r"(?<!\w):[A-Za-z][\w>/ -]*:(?!\w)")
+# A header key, which alone is no evidence: a key of the header JSON (`"Bias::Bias (V)":`), or a
+# ":KEY:" line of a text header (Nanonis .sxm, e.g. ":NANONIS_VERSION:").
+HEADER_KEY = re.compile(r'"[^"\n]*"\s*:|(?<!\w):[A-Za-z][\w>/ -]*:(?!\w)')
 
 
 def norm(text):
@@ -192,6 +193,8 @@ def check_field(field, value, evidence, sources, rules, definition, examples):
             entry["notes"].append("quote found only when spaces are ignored")
     if not found:
         raise Dropped("quote_not_found")
+    if all(source["kind"] == "header" for source in found) and field not in rules.get("header", []):
+        raise Dropped("not_a_header_field")
     if named not in [file_key(source["name"]) for source in found]:
         entry["notes"].append(f"quote found in {found[0]['name']}, not in the named file")
     quote_text = norm(HEADER_KEY.sub(" ", quote))
@@ -215,7 +218,7 @@ def check_field(field, value, evidence, sources, rules, definition, examples):
     return value, entry
 
 
-def merge(rule_eln, answer_text, bundle, raw_file, rules):
+def merge(rule_eln, answer_text, bundle, header, rules, instructions_dir):
     """The merged ELN and the report."""
     definition = definition_of(rule_eln, rules)
     report = {
@@ -238,7 +241,7 @@ def merge(rule_eln, answer_text, bundle, raw_file, rules):
     if not definition:
         report["status"] = "no_definition"
         return copy.deepcopy(rule_eln), report
-    instructions = load_instructions(definition, rules)
+    instructions = load_instructions(definition, rules, instructions_dir)
     report["instructions"] = {
         "path": rules["definitions"][definition]["instructions"],
         "sha256": hashlib.sha256(instructions.encode("utf-8")).hexdigest(),
@@ -247,7 +250,7 @@ def merge(rule_eln, answer_text, bundle, raw_file, rules):
     if answer_eln is None:
         report["status"] = "unparsable"
         return copy.deepcopy(rule_eln), report
-    sources, _ = source_files(bundle, raw_file)
+    sources, _ = source_files(bundle, header)
     examples = example_values(instructions)
     merged = copy.deepcopy(rule_eln)
     fields = [f for f in rules["fill"] if not has_path(rule_eln, f)] + rules["replace"]
@@ -276,8 +279,9 @@ def main():
     parser.add_argument("eln", help="ELN YAML of the rule builder.")
     parser.add_argument("--answer", help="The llm_hub answer (Markdown); without it the rule ELN is kept.")
     parser.add_argument("--answer-label", help="Name of the answer dataset (names the model), for the report.")
-    parser.add_argument("--raw", help="The raw file; its .sxm header is a source, as for the LLM.")
-    parser.add_argument("--rules", default=str(TOOL_DIR / "eln_rules.yaml"))
+    parser.add_argument("--header", required=True, help="Header JSON of the raw file; a source, as for the LLM.")
+    parser.add_argument("--rules", required=True, help="Rules YAML of the pynxtools plugin.")
+    parser.add_argument("--instructions", required=True, help="Folder with the instructions per definition.")
     parser.add_argument("--out-eln", required=True)
     parser.add_argument("--report", required=True)
     args = parser.parse_args()
@@ -294,7 +298,7 @@ def main():
     # A skipped llm_hub step (LLM off in the workflow) gives a dataset that holds only "null".
     if answer is not None and answer.strip() == "null":
         answer = None
-    merged, report = merge(rule_eln, answer, bundle, args.raw, rules)
+    merged, report = merge(rule_eln, answer, bundle, args.header, rules, args.instructions)
     report["answer_label"] = args.answer_label
     header = (
         f"# ELN for {report['raw_path']}: rule ELN + LLM values that passed the checks.\n"
