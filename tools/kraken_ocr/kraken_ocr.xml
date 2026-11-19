@@ -5,7 +5,9 @@
         <import>macros_for_testing.xml</import>
         <token name="@VERSION_SUFFIX@">1</token>
     </macros>
-    <expand macro="requirements"/>
+    <expand macro="requirements">
+        <requirement type="package" version="1.1.45">libxslt</requirement>
+    </expand>
     <creator>
         <person givenName="Ivo Christopher" familyName="Leist" email="leist@informatik.uni-freiburg.de" identifier="https://orcid.org/0000-0002-9772-443X"/>
         <organization name="AI4SOCIAL+" url="https://cordis.europa.eu/project/id/101292886"/>
@@ -47,8 +49,8 @@
             #end if
             ln -s '$image' '$image_filename' &&
             #if $input_type.source == 'segmented'
-                python '$__tool_directory__/set_image_reference.py'
-                    '$segmentation' '$image_filename' '$segmentation_filename' &&
+                xsltproc --nonet --stringparam filename '$image_filename'
+                    -o '$segmentation_filename' '$rewrite_image_reference' '$segmentation' &&
             #end if
         #end for
         #if not $is_collection
@@ -79,6 +81,31 @@
     ]]></command>
     <expand macro="env_vars"/>
     <configfiles>
+        <configfile name="rewrite_image_reference"><![CDATA[
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+    <xsl:param name="filename"/>
+    <xsl:key name="alto-file" use="'image'"
+             match="/*[local-name()='alto']/*[local-name()='Description']/*[local-name()='sourceImageInformation']/*[local-name()='fileName']"/>
+    <xsl:key name="page-file" use="'image'"
+             match="/*[local-name()='PcGts']/*[local-name()='Page']/@imageFilename"/>
+
+    <xsl:template match="/">
+        <xsl:if test="not(key('alto-file', 'image') | key('page-file', 'image'))">
+            <xsl:message terminate="yes">Missing image reference in segmentation XML</xsl:message>
+        </xsl:if>
+        <xsl:apply-templates/>
+    </xsl:template>
+    <xsl:template match="@*|node()">
+        <xsl:copy><xsl:apply-templates select="@*|node()"/></xsl:copy>
+    </xsl:template>
+    <xsl:template match="key('alto-file', 'image')">
+        <xsl:copy><xsl:copy-of select="@*"/><xsl:value-of select="\$filename"/></xsl:copy>
+    </xsl:template>
+    <xsl:template match="key('page-file', 'image')">
+        <xsl:attribute name="imageFilename"><xsl:value-of select="\$filename"/></xsl:attribute>
+    </xsl:template>
+</xsl:stylesheet>
+        ]]></configfile>
         <configfile name="collection_metadata"><![CDATA[
 #import json
 #set $native_out_ext = 'txt'
@@ -185,6 +212,17 @@ $json.dumps({'paired_output': {'elements': $elements}})
             <assert_stderr>
                 <has_text text="Missing image reference in segmentation XML"/>
             </assert_stderr>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_input" segmentation="alto_nested_order.xml" segmentation_ftype="alto"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-a"/>
+            <output name="output" ftype="alto">
+                <assert_contents>
+                    <!-- The nested group puts the first source line second in the explicit order. -->
+                    <xml_element path=".//@NS_ALTO@OrderedGroup/@NS_ALTO@ElementRef[2][@REF='_53b7d9e6-d7a6-4670-a122-e85e35edaf75']"/>
+                </assert_contents>
+            </output>
         </test>
         <!-- Segmentation references input.png, but the uploaded image is JPEG. -->
         <test expect_num_outputs="1">
