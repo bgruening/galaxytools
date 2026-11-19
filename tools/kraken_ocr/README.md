@@ -61,7 +61,7 @@ Note, GPU processing is only supported for kraken `segment` and `ocr`.
 
 The CC-BY-4.0 source material was produced by the
 [Ajax Multi-Commentary project](https://github.com/AjaxMultiCommentary/OCR-kraken-models/blob/e187951d0ebc669929c866f8a43bc303e849ff45/README.md).
-Contributors according to the reposistory's README file are:
+Contributors according to the repository's README file are:
 - Bruce Robertson (Mount Allison University)
 - Sven Najem-Meyer (EPFL)
 - Matteo Romanello (UNIL)
