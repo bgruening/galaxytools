@@ -66,5 +66,5 @@ Contributors according to the repository's README file are:
 - Sven Najem-Meyer (EPFL)
 - Matteo Romanello (UNIL)
 
-The CC-BY-4.0-SA source material was produced by
+The CC BY-SA 4.0 source material was produced by
 - Anton Webern Gesamtausgabe 
