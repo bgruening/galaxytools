@@ -1,12 +1,15 @@
 <tool id="sylph_profile" name="sylph profile" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
     <description>Profile a metagenome including taxonomic and sequence abundances</description>
     <macros>
-       <import>macros.xml</import> 
+        <import>macros.xml</import>
     </macros>
-    <expand macro='requirements'>
+    <expand macro="requirements">
         <requirement type="package" version="1.2.0">sylph-tax</requirement>
     </expand>
-    <command detect_errors='exit_code'><![CDATA[
+    <required_files>
+        <include path="merge_taxonomy.py"/>
+    </required_files>
+    <command detect_errors="aggressive"><![CDATA[
 #import re
 ##SYMLINK SYLPH DB
 @DB_SELECTOR@
@@ -77,15 +80,26 @@
 
 ##SYLPH-TAX COMMAND
     #if $database_select.select == 'cached'
-        && cp '$config' config.json
+        ## Symlink (rather than copy) the generated config next to the tool
+        ## invocation so SYLPH_TAXONOMY_CONFIG points at a short relative path.
+        && ln -s '$config' config.json
         && export SYLPH_TAXONOMY_CONFIG=config.json
         && mkdir -p sylph_taxprof_out
         && sylph-tax taxprof
             '$output_sylph_prof'
             -o sylph_taxprof_out/'sylph_tax_out-'
             --taxonomy-metadata $metadata_files
-        && sylph-tax merge
-            sylph_taxprof_out/*.sylphmpa --column $column -o output_tax_merge.tsv
+        ## sylph-tax omits negative samples. Keep their columns, including when
+        ## there are no taxonomy files to pass to the upstream merge command.
+        && python '$__tool_directory__/merge_taxonomy.py'
+            --profile '$output_sylph_prof'
+            --sketches sylph_sketches
+            --taxonomy sylph_taxprof_out
+            --output output_tax_merge.tsv
+            --column '$column'
+            #if $sketch_reads.type_reads in ('paired', 'paired_group'):
+                --paired
+            #end if
     #end if
     ]]></command>
     <configfiles>
@@ -106,13 +120,13 @@
                 <option value="paired">One set of paired-end reads</option>
                 <option value="paired_group">Group of paired-ended reads</option>
             </param>
-        <!-- Only permitting fastq as tool input only allows fastq and fastq.gz as file ext -->
+            <!-- Only permitting fastq as tool input only allows fastq and fastq.gz as file ext -->
             <when value="single_fastq">
                 <param name="input" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Single-end input reads"/>
             </when>
             <when value="single_group_fastq">
                 <param name="input" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Single-end input reads" multiple="true"/>
-            </when>            
+            </when>
             <when value="paired">
                 <param name="input_1" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Paired-end input reads 1"/>
                 <param name="input_2" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Paired-end input reads 2"/>
@@ -122,7 +136,7 @@
             </when>
         </conditional>
         <param name="min_num_kmers" type="integer" min="1" value="50" label="Minimum number of k-mers for Sylph to output a result." help="States the minimum number of k-mers needed for sylph to output a result.This is (approximately) the contig length divided by -c. With default settings, --min-number-kmers 10 can work with contigs ~2500 bp. For smaller contigs, consider -c 100."/>
-        <param name="estimate_unknown" type="boolean" checked="false" label="Estimating percentage of unknown reads in database" truevalue="Yes" falsevalue="No" help="Estimate the percentage of your reads that are present at the species level (--estimate-unknown)" />
+        <param name="estimate_unknown" type="boolean" checked="false" label="Estimating percentage of unknown reads in database" truevalue="Yes" falsevalue="No" help="Estimate the percentage of your reads that are present at the species level (--estimate-unknown)"/>
         <conditional name="database_select">
             <param name="select" type="select" label="Choose the source for databases and metadata">
                 <option value="cached">Cached data</option>
@@ -130,16 +144,16 @@
                 <option value="cached_and_custom">Cached and custom databases</option>
             </param>
             <when value="cached">
-                <param label="Select a sylph database" name="sylph_database" type="select" multiple="true" optional="false">
+                <param label="Select a sylph database" name="sylph_database" type="select" multiple="true">
                     <options from_data_table="sylph_databases">
                         <filter type="static_value" value="1" column="version"/>
-                        <validator message="No Sylph databases are available" type="no_options" />
+                        <validator message="No Sylph databases are available" type="no_options"/>
                     </options>
                 </param>
                 <param label="sylph-tax metadata files" name="sylph_tax_metadata" type="select">
                     <options from_data_table="sylph_tax_database">
                         <filter type="static_value" value="1" column="version"/>
-                        <validator message="No Sylph databases are available" type="no_options" />
+                        <validator message="No Sylph databases are available" type="no_options"/>
                     </options>
                 </param>
                 <param argument="--column" type="select" label="Select the column to use for sylph tax merge" help="">
@@ -153,76 +167,72 @@
         </conditional>
     </inputs>
     <outputs>
-        <data format="tabular" name="output_sylph_prof" label="${tool.name} on ${on_string}"/>
+        <data format="tabular" name="output_sylph_prof"/>
         <collection name="sylphmpa_files" type="list" label="${tool.name} on ${on_string}: taxonomy files per sample">
-            <discover_datasets format="tabular" pattern="__name__" directory="sylph_taxprof_out" />
+            <discover_datasets format="tabular" pattern="__name__" directory="sylph_taxprof_out"/>
             <filter>database_select['select'] == "cached"</filter>
         </collection>
         <data format="tabular" name="sylph_merge_tax_out" from_work_dir="output_tax_merge.tsv" label="${tool.name} on ${on_string}: Sylph-tax Report">
             <filter>database_select['select'] == "cached"</filter>
-        </data>        
+        </data>
     </outputs>
     <tests>
         <!--Test 1 Single-end Inputs Custom DB-->
-
         <test expect_num_outputs="1">
             <conditional name="database_select">
                 <param name="select" value="custom"/>
-                    <conditional name="sketch_fasta">
-                        <param name="type_fasta" value="single_fasta"/>
-                        <param name="input" ftype="fasta" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz"/>
-                    </conditional>
-            </conditional>               
+                <conditional name="sketch_fasta">
+                    <param name="type_fasta" value="single_fasta"/>
+                    <param name="input" ftype="fasta" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz"/>
+                </conditional>
+            </conditional>
             <conditional name="sketch_reads">
                 <param name="type_reads" value="single_fastq"/>
                 <param name="input" value="single_1.fastq.gz" ftype="fastq"/>
             </conditional>
-            <output name="output_sylph_prof" value="output_profile_1.tsv"/>
+            <output name="output_sylph_prof" value="output_profile_1.tsv" ftype="tabular"/>
         </test>
-
         <!--Test 2  Group of Single-end Inputs Custom DB-->
         <test expect_num_outputs="1">
             <conditional name="database_select">
                 <param name="select" value="custom"/>
-                    <conditional name="sketch_fasta">
-                        <param name="type_fasta" value="single_fasta"/>
-                        <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
-                    </conditional>
-            </conditional>   
+                <conditional name="sketch_fasta">
+                    <param name="type_fasta" value="single_fasta"/>
+                    <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
+                </conditional>
+            </conditional>
             <conditional name="sketch_reads">
                 <param name="type_reads" value="single_group_fastq"/>
                 <param name="input" value="single_1.fastq.gz,single_2.fastq.gz" ftype="fastq"/>
             </conditional>
             <param name="min_num_kmers" value="49"/>
-            <output name="output_sylph_prof" value="output_profile_2.tsv" compare="sim_size"/>
+            <output name="output_sylph_prof" value="output_profile_2.tsv" ftype="tabular" compare="sim_size"/>
         </test>
-
         <!-- Test 3 Paired-end reads Custom DB -->
         <test expect_num_outputs="1">
             <conditional name="database_select">
                 <param name="select" value="custom"/>
-                    <conditional name="sketch_fasta">
-                        <param name="type_fasta" value="single_fasta"/>
-                        <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
-                    </conditional>
-            </conditional>   
+                <conditional name="sketch_fasta">
+                    <param name="type_fasta" value="single_fasta"/>
+                    <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
+                </conditional>
+            </conditional>
             <conditional name="sketch_reads">
                 <param name="type_reads" value="paired"/>
                 <param name="input_1" value="test_R1.fq" ftype="fastq"/>
                 <param name="input_2" value="test_R2.fq" ftype="fastqsanger"/>
             </conditional>
-            <output name="output_sylph_prof" value="output_profile_3.tsv"/>
+            <output name="output_sylph_prof" value="output_profile_3.tsv" ftype="tabular"/>
         </test>
-
         <!-- Test 4 Collection of Paired-end Reads with custom db -->
         <test expect_num_outputs="1">
             <conditional name="database_select">
                 <param name="select" value="custom"/>
-                    <conditional name="sketch_fasta">
-                        <param name="type_fasta" value="single_fasta"/>
-                        <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
-                    </conditional>
-            </conditional>   
+                <conditional name="sketch_fasta">
+                    <param name="type_fasta" value="single_fasta"/>
+                    <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
+                </conditional>
+            </conditional>
             <conditional name="sketch_reads">
                 <param name="type_reads" value="paired_group"/>
                 <param name="input">
@@ -233,19 +243,18 @@
                 </param>
             </conditional>
             <param name="estimate_unknown" value="Yes"/>
-            <output name="output_sylph_prof" value="output_profile_4_6.tsv"/>
+            <output name="output_sylph_prof" value="output_profile_4_6.tsv" ftype="tabular"/>
         </test>
-
         <!-- Test 5 Collection of Paired-end Reads with custom and cached db-->
         <test expect_num_outputs="1">
             <conditional name="database_select">
                 <param name="select" value="cached_and_custom"/>
                 <param name="sylph_database" value="sylph db"/>
-                    <conditional name="sketch_fasta">
-                        <param name="type_fasta" value="single_fasta"/>
-                        <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
-                    </conditional>
-            </conditional>   
+                <conditional name="sketch_fasta">
+                    <param name="type_fasta" value="single_fasta"/>
+                    <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
+                </conditional>
+            </conditional>
             <conditional name="sketch_reads">
                 <param name="type_reads" value="paired_group"/>
                 <param name="input">
@@ -256,7 +265,7 @@
                 </param>
             </conditional>
             <param name="estimate_unknown" value="Yes"/>
-            <output name="output_sylph_prof" value="output_profile_5.tsv"/>
+            <output name="output_sylph_prof" value="output_profile_5.tsv" ftype="tabular"/>
         </test>
         <!-- Test 6 Collection of Paired-end Reads cached db-->
         <test expect_num_outputs="3">
@@ -264,7 +273,7 @@
                 <param name="select" value="cached"/>
                 <param name="sylph_database" value="sylph db"/>
                 <param name="column" value="ANI"/>
-            </conditional>   
+            </conditional>
             <conditional name="sketch_reads">
                 <param name="type_reads" value="paired_group"/>
                 <param name="input">
@@ -275,7 +284,7 @@
                 </param>
             </conditional>
             <param name="estimate_unknown" value="Yes"/>
-            <output name="output_sylph_prof" value="output_profile_4_6.tsv"/>
+            <output name="output_sylph_prof" value="output_profile_4_6.tsv" ftype="tabular"/>
         </test>
         <!-- Test 7 single end input with cached db and metadata taxonomy-->
         <test expect_num_outputs="3">
@@ -283,13 +292,13 @@
                 <param name="select" value="cached"/>
                 <param name="sylph_database" value="sylph db"/>
                 <param name="column" value="ANI"/>
-            </conditional>               
+            </conditional>
             <conditional name="sketch_reads">
                 <param name="type_reads" value="single_fastq"/>
                 <param name="input" value="single_1.fastq.gz" ftype="fastq"/>
             </conditional>
-            <output name="output_sylph_prof" value="output_profile_7.tsv"/>
-            <output name="sylph_merge_tax_out" value="output_tax-merge_7.tsv"/>
+            <output name="output_sylph_prof" value="output_profile_7.tsv" ftype="tabular"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_7.tsv" ftype="tabular"/>
             <output_collection name="sylphmpa_files" type="list" count="1">
                 <expand macro="element_assert" name="sylph_tax_out-single_1.fastq.gz.sylphmpa" text="d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacterales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia"/>
             </output_collection>
@@ -300,67 +309,138 @@
                 <param name="select" value="cached"/>
                 <param name="sylph_database" value="sylph db,sylph database OceanDNA-c200-v0.3.syldb"/>
                 <param name="column" value="ANI"/>
-            </conditional> 
+            </conditional>
             <conditional name="sketch_reads">
                 <param name="type_reads" value="single_group_fastq"/>
                 <param name="input" value="single_1.fastq.gz,single_2.fastq.gz" ftype="fastq"/>
             </conditional>
             <param name="min_num_kmers" value="49"/>
-            <output name="output_sylph_prof" value="output_profile_8.tsv" sort="true"/>
-            <output name="sylph_merge_tax_out" value="output_tax-merge_8.tsv"/>
+            <output name="output_sylph_prof" value="output_profile_8.tsv" ftype="tabular" sort="true"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_8.tsv" ftype="tabular"/>
             <output_collection name="sylphmpa_files" type="list" count="2">
-                <expand macro="element_assert" name="sylph_tax_out-single_1.fastq.gz.sylphmpa" line="d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacterales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia flexneri|t__e.coli-o157.fasta.gz&#9;100.0&#9;100.0&#9;99.95&#9;0.047"/>
+                <expand macro="element_assert" name="sylph_tax_out-single_1.fastq.gz.sylphmpa" line="d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacterales|f__Enterobactericeae|g__Escherichia|s__Escherichia flexneri|t__e.coli-o157.fasta.gz&#9;100.0&#9;100.0&#9;99.95&#9;0.047"/>
                 <expand macro="element_assert" name="sylph_tax_out-single_2.fastq.gz.sylphmpa" text="d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacterales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia flexneri|t__e.coli-o157.fasta.gz&#9;100.0&#9;100.0&#9;99.95&#9;0.047"/>
             </output_collection>
         </test>
+        <!--Test 9 single end input with cached db and no genomes passing the profiling threshold:
+            sylph-tax taxprof writes no .sylphmpa files, so the wrapper must emit a header-only
+            report instead of passing the unmatched glob to sylph-tax merge.-->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db"/>
+                <param name="column" value="ANI"/>
+            </conditional>
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_fastq"/>
+                <param name="input" value="single_1.fastq.gz" ftype="fastq"/>
+            </conditional>
+            <!-- 21899 k-mers are sketched for the only genome in the cached
+                 database, so any value above that filters out every hit. -->
+            <param name="min_num_kmers" value="25000"/>
+            <output name="output_sylph_prof" value="output_profile_9.tsv" ftype="tabular"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_9.tsv" ftype="tabular"/>
+            <output_collection name="sylphmpa_files" type="list" count="0"/>
+        </test>
+        <!-- All samples are negative, but every input must retain a report column. -->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db"/>
+                <param name="column" value="ANI"/>
+            </conditional>
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_group_fastq"/>
+                <param name="input" value="single_1.fastq.gz,single_2.fastq.gz" ftype="fastq"/>
+            </conditional>
+            <param name="min_num_kmers" value="25000"/>
+            <output name="output_sylph_prof" value="output_profile_9.tsv" ftype="tabular"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_10.tsv" ftype="tabular"/>
+            <output_collection name="sylphmpa_files" type="list" count="0"/>
+        </test>
+        <!-- A negative paired sample uses the forward-read name, not the sketch suffix. -->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db"/>
+                <param name="column" value="ANI"/>
+            </conditional>
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired"/>
+                <param name="input_1" value="single_1.fastq.gz" ftype="fastq"/>
+                <param name="input_2" value="single_2.fastq.gz" ftype="fastq"/>
+            </conditional>
+            <param name="min_num_kmers" value="25000"/>
+            <output name="output_sylph_prof" value="output_profile_9.tsv" ftype="tabular"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_9.tsv" ftype="tabular"/>
+            <output_collection name="sylphmpa_files" type="list" count="0"/>
+        </test>
+        <!-- Synthetic random reads have no matches; retain their zero column beside a positive sample. -->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db"/>
+                <param name="column" value="ANI"/>
+            </conditional>
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_group_fastq"/>
+                <param name="input" value="single_1.fastq.gz,zero_hit.fastq" ftype="fastq"/>
+            </conditional>
+            <output name="output_sylph_prof" value="output_profile_7.tsv" ftype="tabular"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_12.tsv" ftype="tabular"/>
+            <output_collection name="sylphmpa_files" type="list" count="1">
+                <expand macro="element_assert" name="sylph_tax_out-single_1.fastq.gz.sylphmpa" text="d__Bacteria|p__Proteobacteria"/>
+            </output_collection>
+        </test>
     </tests>
-    <help><![CDATA[
-**What is sylph?**
+    <help format="markdown"><![CDATA[
+# What is sylph?
 
-Sylph is an extremely fast and memory efficient program for profiling and searching metagenomic samples against databases. It is 10-100x faster than other popular software such as MetaPhlAn or Kraken and more memory efficient too. 
+Sylph is an extremely fast and memory efficient program for profiling and searching metagenomic samples against databases. It is 10-100x faster than other popular software such as MetaPhlAn or Kraken and more memory efficient too.
 
-**What can sylph do?**
+# What can sylph do?
 
-- Profile metagenomes: sylph can calculate the abundances of genomes in a sample using a reference database. This is the same type of output as Kraken or MetaPhlAn. 
+- Profile metagenomes: sylph can calculate the abundances of genomes in a sample using a reference database. This is the same type of output as Kraken or MetaPhlAn.
 - Search genomes against metagenomes: sylph can check if a genome is contained in your sample (e.g. is this E. coli genome in my sample?).
 - ANI querying: sylph can estimate the containment average nucleotide identity (ANI) of a reference genome to the genomes in your sample.
 - Use custom reference databases: Eukaryotes, viruses, and any collections of fasta files are ok.
 - Long-reads are usable: sylph is primarily optimized for short-reads, but it can utilize nanopore or PacBio reads with high precision.
 - Calculate coverage: sylph can estimate the coverage (not just the abundance) of genomes in your database.
 
-`[See here for more information on what sylph can and can not do]. <https://github.com/bluenote-1577/sylph/wiki/Introduction:-what-is-sylph-and-how-does-it-work%3F>`_
+[See here for more information on what sylph can and can not do](https://github.com/bluenote-1577/sylph/wiki/Introduction:-what-is-sylph-and-how-does-it-work%3F).
 
-----
+-----
 
-**Output**
+# Output
 
 Sylph profile outputs a TSV (tab-separated values) file. Each row is one genome detected in the metagenome sample.
-    - Sample_file: the filename of the reads/sample.
-    - Genome_file: the filename of the detected genome.
-    - Taxonomic_abundance: normalized taxonomic abundance as a percentage. Coverage-normalized - same as MetaPhlAn abundance
-    - Sequence_abundance: normalized sequence abundance as a percentage. The "number of reads" assigned to each genome - same as Kraken abundance
-    - Adjusted_ANI: adjusted containment ANI estimate.
-        - If coverage adjustment is possible (cov is < 3x cov): returns coverage-adjusted ANI
-        - If coverage is too low/high: returns Naive_ANI (see below)
-    - Eff_cov/True_cov: an estimate of the effective, or if -u specified, the true coverage. Always a decimal number.
-    - ANI_5-95_percentile: [5%,95%] confidence intervals. Not always a decimal number.
-        - If coverage adjustment is possible: float-float e.g. 98.52-99.55
-        - If coverage is too low/high: NA-NA is given.
-    - Eff_lambda: estimate of the effective coverage parameter. Not always a decimal number.
-        - If coverage adjustment is possible: lambda estimate is given
-        - If coverage is too low/high: LOW or HIGH is output
-    - Lambda_5-95_percentile: [5%, 95%] confidence intervals for lambda. Same format rules as ANI_5-95_percentile.
-    - Median_cov: median k-mer multiplicity for k-mers with >= 1 multiplicity.
-    - Mean_cov_geq1: mean k-mer multiplicity for k-mers with >= 1 multiplicity.
-    - Containment_ind: int/int showing the containment index (number of k-mers found in sample divided by total k-mers), e.g. 959/1053.
-    - Naive_ANI: containment ANI without coverage adjustment.
-    - kmers_reassigned: the number of k-mers reassigned away from the genome.
-    - Contig_name: name of the first contig in the genome
 
-Additional files are able to be output. The metaphlan-style output is formatted similarly to that output by the `[Metaphlan <toolshed.g2.bx.psu.edu/repos/iuc/metaphlan/metaphlan/4.1.1+galaxy3>`_ 
-This output is *NOT* compatible with Krona directly. For that, please select the Krona-style output option.
+- **Sample_file**: the filename of the reads/sample.
+- **Genome_file**: the filename of the detected genome.
+- **Taxonomic_abundance**: normalized taxonomic abundance as a percentage. Coverage-normalized - same as MetaPhlAn abundance.
+- **Sequence_abundance**: normalized sequence abundance as a percentage. The "number of reads" assigned to each genome - same as Kraken abundance.
+- **Adjusted_ANI**: adjusted containment ANI estimate.
+    - If coverage adjustment is possible (cov is < 3x cov): returns coverage-adjusted ANI
+    - If coverage is too low/high: returns Naive_ANI (see below)
+- **Eff_cov/True_cov**: an estimate of the effective, or if -u specified, the true coverage. Always a decimal number.
+- **ANI_5-95_percentile**: [5%,95%] confidence intervals. Not always a decimal number.
+    - If coverage adjustment is possible: float-float e.g. 98.52-99.55
+    - If coverage is too low/high: NA-NA is given.
+- **Eff_lambda**: estimate of the effective coverage parameter. Not always a decimal number.
+    - If coverage adjustment is possible: lambda estimate is given
+    - If coverage is too low/high: LOW or HIGH is output
+- **Lambda_5-95_percentile**: [5%, 95%] confidence intervals for lambda. Same format rules as ANI_5-95_percentile.
+- **Median_cov**: median k-mer multiplicity for k-mers with >= 1 multiplicity.
+- **Mean_cov_geq1**: mean k-mer multiplicity for k-mers with >= 1 multiplicity.
+- **Containment_ind**: int/int showing the containment index (number of k-mers found in sample divided by total k-mers), e.g. 959/1053.
+- **Naive_ANI**: containment ANI without coverage adjustment.
+- **kmers_reassigned**: the number of k-mers reassigned away from the genome.
+- **Contig_name**: name of the first contig in the genome
 
+If no genomes pass the sylph profiling threshold, the profile contains only the header row, the taxonomy collection is empty, and the sylph-tax report contains a header with `clade_name` and one column per sample. In mixed results, samples with no detected genomes retain their columns with zero values.
 
+The metaphlan-style output is formatted similarly to that output by [MetaPhlAn](https://github.com/biobakery/MetaPhlAn/wiki/MetaPhlAn-4).
+This output is *NOT* compatible with Krona directly.
     ]]></help>
     <expand macro="citation"/>
 </tool>
