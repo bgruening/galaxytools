@@ -2,13 +2,16 @@ import hashlib
 import json
 import os
 import random
+import re
 import sys
 import time
 
 import yaml
 from openai import (
     APIConnectionError,
+    APIError,
     APITimeoutError,
+    BadRequestError,
     InternalServerError,
     OpenAI,
     RateLimitError,
@@ -146,6 +149,41 @@ if not contents:
 messages = [{"role": "user", "content": contents}]
 
 
+def check_context_window():
+    """Stop before generating if the input cannot fit the model's context window.
+
+    Uses the limit (max_input_tokens) and tokenizer set on the proxy. Skipped
+    when either is missing; the server still rejects overflows in that case.
+    """
+    try:
+        proxy = client.with_options(timeout=60, max_retries=0)
+        # LiteLLM serves these routes at the root, also when the base URL ends in /v1
+        root = str(client.base_url).rstrip("/").removesuffix("/v1")
+        info = proxy.get(f"{root}/model/info", cast_to=object)["data"]
+        limits = [(m.get("model_info") or {}).get("max_input_tokens") for m in info if m.get("model_name") == model]
+        limits = [n for n in limits if type(n) is int and n > 0]
+        if not limits:
+            return
+        count = proxy.post(f"{root}/utils/token_counter", body={"model": model, "messages": messages}, cast_to=object)
+        if count.get("tokenizer_type") != "huggingface_tokenizer":
+            return  # the default tokenizer can be far off for non-English text
+        tokens, limit = count["total_tokens"], min(limits)
+        # catch a malformed response
+        if type(tokens) is not int or tokens < 0:
+            return
+    except Exception:
+        return
+    if tokens > limit:
+        sys.exit(
+            f"Your input is {tokens:,} tokens, but this model accepts at most {limit:,} tokens (context window). "
+            "Split it into smaller parts with the LangChain Text Splitters tool, or choose a model with a larger context window."
+        )
+    print(f"Input: {tokens:,} of {limit:,} tokens.")
+
+
+check_context_window()
+
+
 max_retries = int(config.get("MAX_RETRIES", 3))
 max_delay = float(config.get("MAX_DELAY", 900))
 
@@ -260,6 +298,16 @@ for attempt in range(max_retries):
         with open("output.md", "w") as f:
             f.write(answer)
         break
+    except BadRequestError as e:
+        # Not retryable. Input over the context window is rejected before any
+        # generation; show the model's limit instead of the long proxy error.
+        limit = re.search(r"(?:maximum context length (?:is |\()|Max Input Tokens=)(\d+)", str(e))
+        if limit:
+            sys.exit(
+                f"The input is too large: this model accepts at most {int(limit.group(1)):,} tokens (context window). "
+                "Split it into smaller parts with the LangChain Text Splitters tool, or choose a model with a larger context window."
+            )
+        sys.exit(f"The request was rejected: {e}")
     except APITimeoutError as e:
         timeout_attempts += 1
         if attempt == max_retries - 1 or timeout_attempts > max_timeout_retries:
@@ -295,3 +343,7 @@ for attempt in range(max_retries):
             file=sys.stderr,
         )
         time.sleep(sleep_time)
+    except APIError as e:
+        # Other non-retryable errors (e.g. 401, 404, 413). Must stay last:
+        # the retryable errors above are APIError subclasses too.
+        sys.exit(f"The request failed: {type(e).__name__}: {e}")
