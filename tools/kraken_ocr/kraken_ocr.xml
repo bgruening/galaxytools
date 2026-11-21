@@ -3,8 +3,11 @@
     <macros>
         <import>macros.xml</import>
         <import>macros_for_testing.xml</import>
+        <token name="@VERSION_SUFFIX@">1</token>
     </macros>
-    <expand macro="requirements"/>
+    <expand macro="requirements">
+        <requirement type="package" version="1.1.45">libxslt</requirement>
+    </expand>
     <creator>
         <person givenName="Ivo Christopher" familyName="Leist" email="leist@informatik.uni-freiburg.de" identifier="https://orcid.org/0000-0002-9772-443X"/>
         <organization name="AI4SOCIAL+" url="https://cordis.europa.eu/project/id/101292886"/>
@@ -13,23 +16,49 @@
     <command detect_errors="exit_code"><![CDATA[
         #set $native_out_ext = 'txt'
         @SET_OUTPUT_EXTENSION@
-        @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
-
-        ln -s '$input_type.image' 'input.${input_type.image.ext}' &&
-        #if $input_type.source == 'segmented'
-           #set $segmentation_ext = 'xml'
-            ln -s '$input_type.segmentation' 'segmentation.${segmentation_ext}' &&
-        #end if
-
-        #if $input_type.image.ext != 'pdf'
-            ln -s '$output' 'kraken_output.${out_ext}' &&
-        #end if
-
         #if $model_source.source == 'history'
             #set $model_name = str($model_source.model.name)
             ln -s '$model_source.model' '$model_name' &&
         #end if
 
+        #set $is_collection = $input_type.source == 'segmented' and $input_type.input_source.source == 'collection'
+        #if $is_collection
+            #set $pairs = $input_type.input_source.segmentation_collection
+            mkdir -p results &&
+            cp '$collection_metadata' output_collection_metadata.json &&
+        #else
+            #set $pairs = [None]
+        #end if
+        #for $i, $pair in enumerate($pairs)
+            #if $is_collection
+                #set $image = $pair.forward
+                #set $segmentation = $pair.reverse
+            #elif $input_type.source == 'segmented'
+                #set $image = $input_type.input_source.image
+                #set $segmentation = $input_type.input_source.segmentation
+            #else
+                #set $image = $input_type.image
+            #end if
+            @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
+            #if $is_collection
+                #set $image_filename = 'page_%06d.%s' % ($i, $image.ext)
+                #set $segmentation_filename = 'segmentation_%06d.xml' % $i
+            #else
+                #set $image_filename = 'input.' + str($image.ext)
+                #set $segmentation_filename = 'segmentation.xml'
+            #end if
+            ln -s '$image' '$image_filename' &&
+            #if $input_type.source == 'segmented'
+                xsltproc --nonet --stringparam filename '$image_filename'
+                    -o '$segmentation_filename' '$rewrite_image_reference' '$segmentation' &&
+            #end if
+        #end for
+        #if not $is_collection
+            #set $ocr_output = 'kraken_output.' + $out_ext
+            #if $image.ext != 'pdf'
+                ln -s '$output' '$ocr_output' &&
+            #end if
+        #end if
         @RUN_KRAKEN_OCR@
             #if $model_source.source == 'datatable'
                 --model '$model'
@@ -51,6 +80,46 @@
             #end if
     ]]></command>
     <expand macro="env_vars"/>
+    <configfiles>
+        <configfile name="rewrite_image_reference"><![CDATA[
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+    <xsl:param name="filename"/>
+    <xsl:key name="alto-file" use="'image'"
+             match="/*[local-name()='alto']/*[local-name()='Description']/*[local-name()='sourceImageInformation']/*[local-name()='fileName']"/>
+    <xsl:key name="page-file" use="'image'"
+             match="/*[local-name()='PcGts']/*[local-name()='Page']/@imageFilename"/>
+
+    <xsl:template match="/">
+        <xsl:if test="not(key('alto-file', 'image') | key('page-file', 'image'))">
+            <xsl:message terminate="yes">Missing image reference in segmentation XML</xsl:message>
+        </xsl:if>
+        <xsl:apply-templates/>
+    </xsl:template>
+    <xsl:template match="@*|node()">
+        <xsl:copy><xsl:apply-templates select="@*|node()"/></xsl:copy>
+    </xsl:template>
+    <xsl:template match="key('alto-file', 'image')">
+        <xsl:copy><xsl:copy-of select="@*"/><xsl:value-of select="\$filename"/></xsl:copy>
+    </xsl:template>
+    <xsl:template match="key('page-file', 'image')">
+        <xsl:attribute name="imageFilename"><xsl:value-of select="\$filename"/></xsl:attribute>
+    </xsl:template>
+</xsl:stylesheet>
+        ]]></configfile>
+        <configfile name="collection_metadata"><![CDATA[
+#import json
+#set $native_out_ext = 'txt'
+@SET_OUTPUT_EXTENSION@
+#set $elements = []
+#if $input_type.source == 'segmented' and $input_type.input_source.source == 'collection'
+    #set $output_datatype = 'hocr' if $out_ext == 'html' else $out_ext
+    #for $i, $pair in enumerate($input_type.input_source.segmentation_collection)
+        #silent $elements.append({'name': str($pair.element_identifier), 'filename': 'results/page_%06d.%s' % ($i, $out_ext), 'ext': $output_datatype})
+    #end for
+#end if
+$json.dumps({'paired_output': {'elements': $elements}})
+        ]]></configfile>
+    </configfiles>
     <inputs>
         <conditional name="input_type">
             <param name="source" type="select" label="Input type" help="Select whether the input is a pre-segmented image with text regions or a single line image">
@@ -58,8 +127,19 @@
                 <option value="line">Single line image</option>
             </param>
             <when value="segmented">
-                <param name="image" type="data" format="jpg,png,tiff" label="Image"/>
-                <param name="segmentation" type="data" format="alto,page.xml" label="Segmentation XML" help="File containing pre-segmented text regions in ALTO or PAGE format"/>
+                <conditional name="input_source">
+                    <param name="source" type="select" label="Input method">
+                        <option value="individual" selected="true">Select an individual image and segmentation</option>
+                        <option value="collection">List of paired datasets</option>
+                    </param>
+                    <when value="individual">
+                        <param name="image" type="data" format="jpg,png,tiff" label="Image"/>
+                        <param name="segmentation" type="data" format="alto,page.xml" label="Segmentation XML" help="File containing pre-segmented text regions in ALTO or PAGE format"/>
+                    </when>
+                    <when value="collection">
+                        <param name="segmentation_collection" type="data_collection" collection_type="list:paired" format="jpg,png,tiff,alto,page.xml" label="Image/segmentation pairs" help="For every pair, the forward element must be the source image and the reverse element must be its corresponding ALTO or PAGE XML segmentation."/>
+                    </when>
+                </conditional>
             </when>
             <when value="line">
                 <param name="image" type="data" format="jpg,png,tiff,pdf" label="Line image"/>
@@ -110,10 +190,79 @@
             <option value="vertical-lr">Vertical, left-to-right</option>
             <option value="vertical-rl">Vertical, right-to-left</option>
         </param>
-        <param name="no_legacy_polygons" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Disable legacy polygon output" help="Choose whether to support legacy polygon formats in segmentation input. Enable it for compatibility with older segmentation files."/>
+        <param name="no_legacy_polygons" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Disable legacy polygon extraction" help="Leave unchecked to use the polygon extractor the recognition model was trained with. Check to force the newer extractor, which can affect accuracy with older models."/>
     </inputs>
-    <expand macro="segment_ocr_outputs" native_format="txt" input_image="input_type['image']"/>
+    <outputs provided_metadata_file="output_collection_metadata.json">
+        <expand macro="segment_ocr_outputs" native_format="txt" input_image="(input_type['image'] if input_type['source'] == 'line' else input_type['input_source']['image'])" single_input="(input_type['source'] == 'line' or input_type['input_source']['source'] == 'individual')"/>
+        <collection name="paired_output" type="list" label="${tool.name} paired images on ${on_string}">
+            <filter>input_type['source'] == 'segmented' and input_type['input_source']['source'] == 'collection'</filter>
+            <discover_datasets from_provided_metadata="true"/>
+        </collection>
+    </outputs>
     <tests>
+        <test expect_failure="true">
+            <expand macro="use_presegmented_input" segmentation="missing_image_reference_alto.xml" segmentation_ftype="alto"/>
+            <expand macro="get_document_ocr_model"/>
+            <assert_stderr>
+                <has_text text="Missing image reference in segmentation XML"/>
+            </assert_stderr>
+        </test>
+        <test expect_failure="true">
+            <expand macro="use_presegmented_input" segmentation="missing_image_reference_page.xml" segmentation_ftype="page.xml"/>
+            <expand macro="get_document_ocr_model"/>
+            <assert_stderr>
+                <has_text text="Missing image reference in segmentation XML"/>
+            </assert_stderr>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_input" segmentation="alto_nested_order.xml" segmentation_ftype="alto"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-a"/>
+            <output name="output" ftype="alto">
+                <assert_contents>
+                    <!-- The explicit order starts with source line 3 and continues with lines 1 and 2. -->
+                    <xml_element path="@EXPLICIT_ORDER_GROUP@" n="1"/>
+                    <xml_element path="@EXPLICIT_ORDER_GROUP@/@NS_ALTO@ElementRef" n="3"/>
+                    <xml_element path="@EXPLICIT_ORDER_GROUP@/@NS_ALTO@ElementRef[2][@REF='_53b7d9e6-d7a6-4670-a122-e85e35edaf75']"/>
+                    <xml_element path="@EXPLICIT_ORDER_GROUP@/@NS_ALTO@ElementRef[3][@REF='_1bf33d67-4d2e-4e85-ba30-72b3b2741614']"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Segmentation references input.png, but the uploaded image is JPEG. -->
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_input" image="input.jpg" image_ftype="jpg" segmentation="input_binarized_seg_alto.xml" segmentation_ftype="alto"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-a"/>
+            <output name="output" ftype="alto">
+                <assert_contents>
+                    <xml_element path=".//@NS_ALTO@fileName[.='input.jpg']"/>
+                    <has_text text="HISTOIRE"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_input" image="input.jpg" image_ftype="jpg" segmentation="input_binarized_seg_page.xml" segmentation_ftype="page.xml"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-x"/>
+            <output name="output" ftype="page.xml">
+                <assert_contents>
+                    <xml_element path="./@NS_PAGE@Page[@imageFilename='input.jpg']"/>
+                    <has_text text="HISTOIRE"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Explicit page: prefixes must not prevent rewriting input.png to input.jpg. -->
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_input" image="input.jpg" image_ftype="jpg" segmentation="input_binarized_seg_page_prefixed.xml" segmentation_ftype="page.xml"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-x"/>
+            <output name="output" ftype="page.xml">
+                <assert_contents>
+                    <xml_element path="./@NS_PAGE@Page[@imageFilename='input.jpg']"/>
+                    <has_text text="HISTOIRE"/>
+                </assert_contents>
+            </output>
+        </test>
         <expand macro="test_bidi_reordering" mode="--reorder" bidi_value="True">
             <param name="base_dir" value="auto"/>
         </expand>
@@ -125,6 +274,10 @@
             <expand macro="use_presegmented_input" segmentation="input_binarized_seg_page.xml" segmentation_ftype="page.xml"/>
             <expand macro="get_document_ocr_model"/>
             <param name="output_format_flag" value="-h"/>
+            <param name="no_legacy_polygons" value="false"/>
+            <assert_command>
+                <has_text text="--no-legacy-polygons" n="0"/>
+            </assert_command>
             <output name="output" ftype="hocr">
                 <assert_contents>
                     <has_text text="ocr_line"/>
@@ -139,6 +292,9 @@
             <param name="temperature" value="0.8"/>
             <param name="text_direction" value="horizontal-tb"/>
             <param name="no_legacy_polygons" value="true"/>
+            <assert_command>
+                <has_text text="--no-legacy-polygons" n="1"/>
+            </assert_command>
             <output name="output" ftype="txt">
                 <assert_contents>
                     <has_text text="HISTOIRE"/>
@@ -190,6 +346,53 @@
                 <has_text text="Detected 2 pages"/>
             </assert_stderr>
         </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_collection" segmentation="input_binarized_seg_alto.xml" segmentation_ftype="alto">
+                <element name="page two/scan.002">
+                    <collection type="paired">
+                        <element name="forward" value="input_binarized.png" ftype="png"/>
+                        <element name="reverse" value="input_binarized_seg_page.xml" ftype="page.xml"/>
+                    </collection>
+                </element>
+            </expand>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-n"/>
+            <assert_command>
+                <has_text_matching expression="\bkraken\s+--device\b" n="1"/>
+                <has_text text="--input 'segmentation_000000.xml' 'results/page_000000.txt'"/>
+                <has_text text="--input 'segmentation_000001.xml' 'results/page_000001.txt'"/>
+                <has_text text="--model" n="1"/>
+            </assert_command>
+            <output_collection name="paired_output" type="list" count="2">
+                <element name="page_one" ftype="txt">
+                    <assert_contents><has_text text="HISTOIRE"/></assert_contents>
+                </element>
+                <element name="page two/scan.002" ftype="txt">
+                    <assert_contents><has_text text="HISTOIRE"/></assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_collection" image="input.jpg" image_ftype="jpg" segmentation="input_binarized_seg_page.xml" segmentation_ftype="page.xml"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-x"/>
+            <output_collection name="paired_output" type="list" count="1">
+                <element name="page_one" ftype="page.xml">
+                    <assert_contents>
+                        <xml_element path="./@NS_PAGE@Page[@imageFilename='page_000000.jpg']"/>
+                        <has_text text="HISTOIRE"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_failure="true">
+            <expand macro="use_presegmented_collection" image="input_2pages.tiff" image_ftype="tiff" segmentation="input_binarized_seg_alto.xml" segmentation_ftype="alto"/>
+            <expand macro="get_document_ocr_model"/>
+            <assert_stderr>
+                <has_text text="multi-page TIF(F) input is not supported"/>
+                <has_text text="Detected 2 pages"/>
+            </assert_stderr>
+        </test>
     </tests>
     <help format="markdown"><![CDATA[
 **What it does**
@@ -205,6 +408,12 @@ For document images, a segmentation file in
 [PAGE XML](https://github.com/PRImA-Research-Lab/PAGE-XML/wiki) format is required.
 This additional input file can be produced by the Kraken segmentation tool,
 which is also available in the Kraken OCR suite.
+Select an individual image and segmentation, or provide a `list:paired` collection:
+
+- **forward**: source image in PNG, JPEG, or TIFF format
+- **reverse**: corresponding ALTO or PAGE XML segmentation
+
+The output collection preserves the input pair identifiers and their order.
 
 The OCR process requires a pre-trained model. You can either upload your own model in
 [mlmodel](https://apple.github.io/coremltools/mlmodel/index.html) or

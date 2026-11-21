@@ -3,6 +3,7 @@
     <macros>
         <import>macros.xml</import>
         <import>macros_for_testing.xml</import>
+        <token name="@VERSION_SUFFIX@">1</token>
     </macros>
     <expand macro="requirements"/>
     <expand macro="creators"/>
@@ -20,6 +21,11 @@
                 echo "The legacy box segmenter requires a binarized image input. PDF input seems to be not supported with the legacy box segmenter since its fails even for 1-bit bilevel PDFs. Please extract the PDF pages to binarized PNG/TIFF images first, or use the neural baseline segmenter." >&2;
                 exit 1;
             #else
+                #set $channels = str($image.metadata.channels)
+                #if $channels.isdecimal() and int($channels) > 1
+                    echo "The legacy box segmenter requires a single-channel binarized image. This image has multiple channels. Convert it to grayscale or 1-bit monochrome PNG/TIFF first, or use the neural baseline segmenter." >&2;
+                    exit 1;
+                #end if
                 colors=\$(identify -format "%k" 'input.${image.ext}') &&
                 if [ "\$colors" -gt 2 ]; then
                     echo "The legacy box segmenter requires a binarized image, but there were \$colors colors detected. Please run Kraken Binarize first or use the neural baseline segmenter." >&2;
@@ -108,7 +114,9 @@
             arbitrary decision to put 1000 as the maximum -->
         <param argument="--input-pad" type="integer" value="0" min="0" max="1000" label="Input image padding" help="Increase it to add more margin around the document before layout analysis; decrease it to keep the input closer to its original boundaries."/>
     </inputs>
-    <expand macro="segment_ocr_outputs" native_format="json" input_image="image"/>
+    <outputs>
+        <expand macro="segment_ocr_outputs" native_format="json" input_image="image"/>
+    </outputs>
     <tests>
         <test expect_num_outputs="1">
             <param name="image" value="input.jpg" ftype="jpg"/>
@@ -204,15 +212,27 @@
             </output>
         </test>
         <test expect_failure="true">
-            <param name="image" value="input.jpg" ftype="jpg"/>
+            <param name="image" value="input.tiff" ftype="tiff"/>
             <param name="output_format_flag" value="-n"/>
             <conditional name="segmenter">
                 <param name="type" value="boxes"/>
             </conditional>
             <assert_stderr>
-                <has_text text="The legacy box segmenter requires a binarized image"/>
-                <has_text text="colors"/>
+                <has_text text="The legacy box segmenter requires a binarized image, but there were 16 colors detected"/>
                 <has_text text="Please run Kraken Binarize first"/>
+            </assert_stderr>
+        </test>
+        <!-- Two-color RGB input passes the color-count check but is not single-channel. -->
+        <test expect_failure="true">
+            <param name="image" value="BT_16_04_1931_S3_binarized.png" ftype="png"/>
+            <param name="output_format_flag" value="-n"/>
+            <conditional name="segmenter">
+                <param name="type" value="boxes"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The legacy box segmenter requires a single-channel binarized image"/>
+                <has_text text="This image has multiple channels"/>
+                <has_text text="Convert it to grayscale or 1-bit monochrome PNG/TIFF first"/>
             </assert_stderr>
         </test>
         <test expect_failure="true">
@@ -224,6 +244,15 @@
             <assert_stderr>
                 <has_text text="PDF input seems to be not supported with the legacy box segmenter"/>
                 <has_text text="1-bit bilevel PDFs"/>
+            </assert_stderr>
+        </test>
+        <test expect_failure="true">
+            <param name="image" value="lines_2pages.tiff" ftype="tiff"/>
+            <conditional name="segmenter">
+                <param name="type" value="boxes"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Detected 2 pages"/>
             </assert_stderr>
         </test>
     </tests>
