@@ -1,0 +1,193 @@
+<tool id="prep_ciriquant" name="prep_CIRIquant" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>count matrices from replicate CIRIquant GTFs</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+@APPLY_PY3_PATCH@
+
+## Build the whitespace separated sample list (name, gtf, group[, subject])
+## that prep_CIRIquant expects.
+: > sample.lst &&
+#for $s in $samples:
+    #if str($s.pairing.paired) == 'yes':
+        echo '${s.sample_name}' '${s.gtf}' '${s.group}' '${s.pairing.subject}' >> sample.lst &&
+    #else:
+        echo '${s.sample_name}' '${s.gtf}' '${s.group}' >> sample.lst &&
+    #end if
+#end for
+
+prep_CIRIquant
+-i sample.lst
+--lib '$library_info'
+--circ '$circrna_info'
+--bsj '$bsj_matrix'
+--ratio '$ratio_matrix'
+    ]]></command>
+    <inputs>
+        <repeat name="samples" title="Samples" min="2" default="2">
+            <param name="sample_name" type="text" value="" label="Sample name" help="Used as the column name of this sample in the count matrices">
+                <validator type="regex" message="Sample names may only contain letters, digits, dots, dashes and underscores">^[A-Za-z0-9_.\-]+$</validator>
+                <validator type="empty_field"/>
+            </param>
+            <param name="group" type="select" label="Group">
+                <option value="C">Control</option>
+                <option value="T">Treatment / case</option>
+            </param>
+            <expand macro="ciriquant_gtf" name="gtf" label="CIRIquant result GTF"/>
+            <conditional name="pairing">
+                <param name="paired" type="select" label="Paired design" help="Enable for samples from the same subject and give the subject identifier; it must be enabled (with a subject) for all samples or none of them">
+                    <option value="no" selected="true">No, unpaired design</option>
+                    <option value="yes">Yes, add a subject identifier</option>
+                </param>
+                <when value="no"/>
+                <when value="yes">
+                    <param name="subject" type="text" value="" label="Subject identifier">
+                        <validator type="regex" message="Subject identifiers may only contain letters, digits, dots, dashes and underscores">^[A-Za-z0-9_.\-]+$</validator>
+                        <validator type="empty_field"/>
+                    </param>
+                </when>
+            </conditional>
+        </repeat>
+    </inputs>
+    <outputs>
+        <data name="library_info" format="csv" label="${tool.name} library info on ${on_string}"/>
+        <data name="circrna_info" format="csv" label="${tool.name} circRNA annotation on ${on_string}"/>
+        <data name="bsj_matrix" format="csv" label="${tool.name} BSJ count matrix on ${on_string}"/>
+        <data name="ratio_matrix" format="csv" label="${tool.name} junction ratio matrix on ${on_string}"/>
+    </outputs>
+    <tests>
+        <!-- Unpaired design with one control and one treatment sample -->
+        <test expect_num_outputs="4">
+            <repeat name="samples">
+                <param name="sample_name" value="ctrl_rep1"/>
+                <param name="group" value="C"/>
+                <param name="gtf" value="de_ctrl.gtf" ftype="gtf"/>
+            </repeat>
+            <repeat name="samples">
+                <param name="sample_name" value="case_rep1"/>
+                <param name="group" value="T"/>
+                <param name="gtf" value="de_case.gtf" ftype="gtf"/>
+            </repeat>
+            <output name="library_info" ftype="csv">
+                <assert_contents>
+                    <has_text text="Sample,Total,Mapped,Circular,Group"/>
+                    <has_text text="case_rep1,3600,3166,400,T"/>
+                    <has_text text="ctrl_rep1,3600,3166,400,C"/>
+                </assert_contents>
+            </output>
+            <output name="circrna_info" ftype="csv">
+                <assert_contents>
+                    <has_text text="circ_id,strand,circ_type,gene_id,gene_name,gene_type"/>
+                    <has_text text="chrT:1000|5500"/>
+                    <has_text text="chrT:9000|13000"/>
+                </assert_contents>
+            </output>
+            <output name="bsj_matrix" ftype="csv">
+                <assert_contents>
+                    <has_text text="circ_id,case_rep1,ctrl_rep1"/>
+                    <has_text text="chrT:1000|5500,8.0,200.0"/>
+                </assert_contents>
+            </output>
+            <output name="ratio_matrix" ftype="csv">
+                <assert_contents>
+                    <has_text text="circ_id,case_rep1,ctrl_rep1"/>
+                    <has_text text="chrT:1000|5500,0.126,0.932"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="ctrl_rep1"/>
+                <has_text text="case_rep1"/>
+                <not_has_text text="subj"/>
+            </assert_command>
+        </test>
+        <!-- Paired design with two control and two treatment samples -->
+        <test expect_num_outputs="4">
+            <repeat name="samples">
+                <param name="sample_name" value="ctrl_rep1"/>
+                <param name="group" value="C"/>
+                <param name="gtf" value="de_ctrl.gtf" ftype="gtf"/>
+                <conditional name="pairing">
+                    <param name="paired" value="yes"/>
+                    <param name="subject" value="subj1"/>
+                </conditional>
+            </repeat>
+            <repeat name="samples">
+                <param name="sample_name" value="ctrl_rep2"/>
+                <param name="group" value="C"/>
+                <param name="gtf" value="de_ctrl.gtf" ftype="gtf"/>
+                <conditional name="pairing">
+                    <param name="paired" value="yes"/>
+                    <param name="subject" value="subj2"/>
+                </conditional>
+            </repeat>
+            <repeat name="samples">
+                <param name="sample_name" value="case_rep1"/>
+                <param name="group" value="T"/>
+                <param name="gtf" value="de_case.gtf" ftype="gtf"/>
+                <conditional name="pairing">
+                    <param name="paired" value="yes"/>
+                    <param name="subject" value="subj1"/>
+                </conditional>
+            </repeat>
+            <repeat name="samples">
+                <param name="sample_name" value="case_rep2"/>
+                <param name="group" value="T"/>
+                <param name="gtf" value="de_case.gtf" ftype="gtf"/>
+                <conditional name="pairing">
+                    <param name="paired" value="yes"/>
+                    <param name="subject" value="subj2"/>
+                </conditional>
+            </repeat>
+            <output name="library_info" ftype="csv">
+                <assert_contents>
+                    <has_text text="Sample,Total,Mapped,Circular,Group,Subject"/>
+                    <has_text text="ctrl_rep1,3600,3166,400,C,subj1"/>
+                    <has_text text="case_rep2,3600,3166,400,T,subj2"/>
+                </assert_contents>
+            </output>
+            <output name="circrna_info" ftype="csv">
+                <assert_contents>
+                    <has_text text="circ_id,strand,circ_type,gene_id,gene_name,gene_type"/>
+                </assert_contents>
+            </output>
+            <output name="bsj_matrix" ftype="csv">
+                <assert_contents>
+                    <has_text text="circ_id,case_rep1,case_rep2,ctrl_rep1,ctrl_rep2"/>
+                </assert_contents>
+            </output>
+            <output name="ratio_matrix" ftype="csv">
+                <assert_contents>
+                    <has_text text="circ_id,case_rep1,case_rep2,ctrl_rep1,ctrl_rep2"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="subj1"/>
+                <has_text text="subj2"/>
+            </assert_command>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+prep_CIRIquant assembles count matrices from replicate CIRIquant result GTFs for circRNA differential expression analysis with DESeq2/edgeR.
+
+Add one entry per sample, giving the sample name, its group (control or treatment/case) and the CIRIquant result GTF. For paired designs select **Yes, add a subject identifier** and give the subject identifier; this must then be done for every sample.
+
+The input GTFs must have been produced with host gene abundance estimation enabled (do not use `--no-gene` in CIRIquant).
+
+**Output**
+
+Four CSV files:
+
+- **library info** (`Sample`, `Total`, `Mapped`, `Circular`, `Group` and optionally `Subject`)
+- **circRNA annotation** (`circ_id`, `strand`, `circ_type`, `gene_id`, `gene_name`, `gene_type`)
+- **BSJ count matrix** (one row per circRNA, one column per sample)
+- **junction ratio matrix** (one row per circRNA, one column per sample)
+
+For further details see the [CIRI-cookbook](https://ciri-cookbook.readthedocs.io/en/latest/CIRIquant_0_home.html).
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
