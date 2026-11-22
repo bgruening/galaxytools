@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Write the LLM input for one raw file: the files one ``llm_hub`` job reads.
 
-Inputs are the raw file's context bundle (``zenodo_download_unzip``), its header
+Inputs are the raw file's context bundle (``zenodo_nomad_download``), its header
 (``raw_file_header``), and the rules and instructions of the pynxtools plugin. Two stages:
 
 - ``detect``: the input of the job that finds the technique and scan mode;
@@ -40,7 +40,7 @@ DETECTION, COMMON, OUTPUT = "Detection", "Common", "Output"
 
 
 def safe_name(name):
-    """A plain file name; same rule as zenodo_download_unzip."""
+    """A plain file name; same rule as zenodo_nomad_download."""
     return re.sub(r"[^\w.\-]", "_", name)
 
 

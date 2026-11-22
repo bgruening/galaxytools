@@ -34,7 +34,7 @@ import zipfile
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 
-logger = logging.getLogger("zenodo_download_unzip")
+logger = logging.getLogger("zenodo_nomad_download")
 
 ARCHIVE_EXTENSIONS = (".zip",)
 # Archives inside an archive are not extracted (yet).

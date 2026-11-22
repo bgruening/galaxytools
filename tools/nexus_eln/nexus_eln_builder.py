@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Build an ELN YAML for one raw file from its context bundle.
 
-The bundle (written by the ``zenodo_download_unzip`` tool) holds the Zenodo
+The bundle (written by the ``zenodo_nomad_download`` tool) holds the Zenodo
 record metadata and the text of the raw file's context files. The technique, and so
 the NeXus definition, comes from the first of: the tool parameter; the LLM detection
 answer, if its quote is found in a source file; the header markers of the rules file;

@@ -1,6 +1,6 @@
-# zenodo_download_unzip
+# zenodo_nomad_download
 
-Downloads the files of the records in a work list from [Zenodo](https://zenodo.org) (MD5 checked)
+Downloads the files of the records in a NOMAD harvest work list from [Zenodo](https://zenodo.org) (MD5 checked)
 and extracts archives safely: no paths outside the folder, size limits. Each file gets a role, `raw`,
 `context` or `ignored`, from the work list's extension lists. Raw files the caller already knows
 (`known_sha256`) are skipped. The text of PDF context files is read with `pdftotext`.

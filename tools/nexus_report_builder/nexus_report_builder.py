@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Collect the conversion results of a harvest run and build the NOMAD projects.
 
-Reads the manifest of the ``zenodo_download_unzip`` tool and the collections of
+Reads the manifest of the ``zenodo_nomad_download`` tool and the collections of
 the later steps, all keyed by the same element identifiers, and writes:
 
 - ``results.json``: conversion status per raw file (by SHA-256), with
@@ -39,7 +39,7 @@ def safe_name(name):
 
 
 def element_id(record_id, sha256, path):
-    """Same rule as in zenodo_download_unzip.py (the tools ship separately)."""
+    """Same rule as in zenodo_nomad_download.py (the tools ship separately)."""
     return f"{record_id}-{sha256[:12]}-{safe_name(PurePosixPath(path).name)}"
 
 
