@@ -2,7 +2,7 @@
 """Write the LLM input for one raw file: the files one ``llm_hub`` job reads.
 
 Inputs are the raw file's context bundle (``zenodo_nomad_download``), its header
-(``raw_file_header``), and the rules and instructions of the pynxtools plugin. Two stages:
+(``spm_raw_header``), and the rules and instructions of the pynxtools plugin. Two stages:
 
 - ``detect``: the input of the job that finds the technique and scan mode;
 - ``eln``: the input of the job that fills the rule ELN (``nexus_eln_builder``).
@@ -205,7 +205,7 @@ def write_input(bundle, eln, header, rules, instructions_path, out_dir):
 
 
 def header_source(header_path):
-    """(suffix, text) of the header file of raw_file_header; None if it holds no header.
+    """(suffix, text) of the header file of spm_raw_header; None if it holds no header.
 
     Metadata is given as the JSON file itself; a leading-text header as its plain text.
     """
@@ -249,7 +249,7 @@ def main():
     parser = argparse.ArgumentParser(description="Write the LLM input for one raw file.")
     parser.add_argument("bundle", help="Context bundle JSON of one raw file.")
     parser.add_argument("--eln", help="ELN YAML of the rule builder; without it: the detection stage.")
-    parser.add_argument("--header", required=True, help="Header JSON of the raw file (raw_file_header).")
+    parser.add_argument("--header", required=True, help="Header JSON of the raw file (spm_raw_header).")
     parser.add_argument("--rules", required=True, help="Rules YAML of the pynxtools plugin.")
     parser.add_argument("--instructions", required=True, help="Instructions file of the pynxtools plugin.")
     parser.add_argument("--out-dir", required=True)

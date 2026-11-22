@@ -232,7 +232,7 @@ def main():
     parser.add_argument("bundle", help="Context bundle JSON of one raw file.")
     parser.add_argument("--rules", required=True, help="Rules YAML of the pynxtools plugin.")
     parser.add_argument("--technique", default="auto", help="auto, or a technique of the rules file.")
-    parser.add_argument("--header", required=True, help="Header JSON of the raw file (raw_file_header).")
+    parser.add_argument("--header", required=True, help="Header JSON of the raw file (spm_raw_header).")
     parser.add_argument("--answer", help="The llm_hub answer of the detection job (Markdown).")
     parser.add_argument("--eln", required=True, help="Output ELN YAML.")
     parser.add_argument("--report", required=True, help="Output JSON: value sources and missing fields.")

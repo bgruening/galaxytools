@@ -12,7 +12,7 @@ A file that cannot be converted gives a status JSON with the reason; the job sti
 
 ## Raw file header
 
-`raw_file_header` writes a raw file's header (metadata) as JSON for the ELN tools. It reads the file with
+`spm_raw_header` writes a raw file's header (metadata) as JSON for the ELN tools. It reads the file with
 [gwyddionpy](https://github.com/FAIRmat-NFDI/gwyddionPy) (many SPM formats, also binary ones) in the
 same environment; files gwyddionpy cannot read give their leading text.
 

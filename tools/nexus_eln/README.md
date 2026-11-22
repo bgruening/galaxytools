@@ -35,7 +35,7 @@ rules, so the two files stay in step.
 
 `eln_rules.yaml` and `eln_instructions.md` in `test-data` are copies of pynxtools-spm's
 `src/pynxtools_spm/galaxy/` files; keep them the same. The `*_header.json` files are outputs of
-the `raw_file_header` tool (`tools/pynxtools_spm`): `const_dos_header.json` and `flt_header.json`
+the `spm_raw_header` tool (`tools/pynxtools_spm`): `const_dos_header.json` and `flt_header.json`
 (a pynxtools-spm Bruker `.FLT` test file) read with gwyddionpy; `T190613_004_header.json` and
 `afm_header.json` the leading text of header-only `.sxm` files. `answer_detect_*.md` are
 hand-written detection answers.
