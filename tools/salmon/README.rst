@@ -64,7 +64,7 @@ v2.11.0   - Sixth release. Update to the salmon 2.x Rust rewrite: new index
            format (rebuild your indices), alevin removed (use alevin-fry),
            long-read quantification removed (use oarfish), renamed decoy flag,
            new sketch and transcript-version options.
--------- ---------------------------------------------------------------------
+-------- ----------------------------------------------------------------------
 
 ======== ======================================================================
 
