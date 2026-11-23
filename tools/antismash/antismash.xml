@@ -8,8 +8,6 @@
     <version_command>antismash --version</version_command>
     <command detect_errors="aggressive">
 <![CDATA[
-        export PYTHONWARNINGS="ignore::FutureWarning" &&
-
         #set $htmloutputfolder = $html.files_path
         #if str($infile.ext) == 'genbank':
             #set $file_extension = 'gb'
@@ -33,16 +31,22 @@
         ## create html folder
         mkdir -p '$htmloutputfolder' &&
 
-        ## antiSMASH generates data (pressed HMM indexes, SVM classifiers) inside
-        ## its own package directory at runtime. When that directory is read-only
-        ## (e.g. inside a container running as a non-root user) the run fails with
-        ## a PermissionError, so use a writable copy of the package instead.
+        ## antiSMASH prepares data (pressed HMM indexes, SVM classifiers) inside its
+        ## package directory when it is missing. The bioconda build runs
+        ## `antismash --prepare-data` at install time, but not every module's data is
+        ## prepared there (e.g. the lanthipeptide classifier), so a read-only package
+        ## directory still fails with a PermissionError. Use a writable copy then.
+        ## https://github.com/antismash/antismash/issues/926
         APKG="\$(python -c 'import antismash, os; print(os.path.dirname(antismash.__file__))')" &&
         if [ ! -w "\$APKG" ]; then mkdir -p antismash_writable && cp -r "\$APKG" antismash_writable/ && export PYTHONPATH="\$PWD/antismash_writable:\$PYTHONPATH" ; fi &&
 
         antismash
             --cpus "\${GALAXY_SLOTS:-12}"
             --databases '${databases.fields.path}'
+            #if $minimal
+                --minimal
+                --enable-html
+            #end if
             --taxon '${cond_taxon.taxon}'
             #if $genefinding_gff3
                 --genefinding-gff3 annotation.gff3
@@ -66,6 +70,7 @@
             #end if
 
             ${cc_mibig}
+            ${pfam2go}
             ${rre}
             --logfile $log
 
@@ -114,6 +119,7 @@
                 <param argument="--cassis" type="boolean" truevalue="--cassis" falsevalue="" checked="false" label="Motif based prediction of SM gene cluster regions" help="Improved prediction of gene cluster borders for fungal BGCs (CASSIS)"/>
             </when>
         </conditional>
+        <param argument="--minimal" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Minimal run" help="Only detect gene clusters, plus the analyses enabled below. Much faster than a full run. The HTML report is always written."/>
         <param argument="--fullhmmer" type="boolean" truevalue="--fullhmmer" falsevalue="" checked="false" label="Full genome PFAM anotation" help="Each gene product encoded in the detected BGCs is analyzed against the PFAM database.                 Hits are annotated in the final Genbank/EMBL files. Also, selecting this option normally increases the runtime"/>
         <param argument="--clusterhmmer" type="boolean" truevalue="--clusterhmmer" falsevalue="" checked="false" label="PFAM anotation for only clusters" help="Run a cluster-limited HMMer analysis"/>
         <param argument="--asf" type="boolean" truevalue="--asf" falsevalue="" checked="True" label="Run active site finder analysis" help="Active sites of several highly conserved biosynthetic enzymes are detected and variations of the active sites are reported"/>
@@ -178,104 +184,23 @@
     </outputs>
     <tests>
         <!--
-        The tests below all use a locally installed antiSMASH database
-        (several GB, installed via the data_manager_antismash_database tool)
-        and therefore cannot run in CI. They are kept for local testing:
-        uncomment them and make sure the antismash_databases data table points
-        at an installed database.
-        <test expect_num_outputs="1">
-            <param name="infile" value="sequence.fasta"/>
-            <conditional name="cond_db">
-                <param name="database" value="cached"/>
-                <param name="databases" value="antismash_databases_8.0.4"/>
-            </conditional>
-            <output name="html" file="index.html"/>
-        </test>
-
-    <test expect_num_outputs="3">
-        <param name="infile" value="sequence_long.fasta"/>
-        <param name="genefinding_gff3" value="annotation.gff3"/>
-        <conditional name="cond_db">
-            <param name="database" value="cached"/>
-            <param name="databases" value="antismash_databases_8.0.4"/>
-        </conditional>
-        <param name="fullhmmer" value="true"/>
-        <param name="cc_mibig" value="true"/>
-        <param name="pfam2go" value="true"/>
-        <param name="rre" value="true"/>
-        <param name="outputs" value="html,gb,log"/>
-        <section name="advanced_options">
-            <param name="minlength" value="1000"/>
-            <param name="hmmdetection_strictness" value="strict"/>
-            <param name="cb_nclusters" value="10"/>
-            <param name="cb_min_homology_scale" value="0.1"/>
-            <param name="rre_cutoff" value="10"/>
-            <param name="rre_minlength" value="50"/>
-        </section>
-        <output_collection name="genbank" type="list">
-            <element name="input_tempfile" ftype="genbank">
-                <assert_contents>
-                    <has_text text="antiSMASH-Data-START"/>
-                    <has_text text="fullhmmer"/>
-                </assert_contents>
-            </element>
-        </output_collection>
-        <output name="html" file="index.3.html" ftype="html">
-            <assert_contents>
-                <has_text text="No results found on input"/>
-            </assert_contents>
-        </output>
-        <output name="log">
-            <assert_contents>
-                <has_text text="antiSMASH status: SUCCESS"/>
-                <has_text text="HMM detection using strictness: strict"/>
-            </assert_contents>
-        </output>
-    </test>
-
-        <test expect_num_outputs="1">
-            <param name="infile" value="sequence.fasta"/>
-            <conditional name="cond_db">
-                <param name="database" value="cached"/>
-                <param name="databases" value="antismash_databases_8.0.4"/>
-            </conditional>
-            <section name="sideload">
-                <param name="format" value="native"/>
-                <param name="file" value="sideload.json"/>
-            </section>
-            <output name="html" file="index.4.html"/>
-        </test>
-
-        <test expect_num_outputs="1">
-            <param name="infile" value="sequence.fasta"/>
-            <conditional name="cond_db">
-                <param name="database" value="cached"/>
-                <param name="databases" value="antismash_databases_8.0.4"/>
-            </conditional>
-            <section name="sideload">
-                <param name="format" value="harmonize"/>
-                <param name="file" value="harmonize.json"/>
-            </section>
-            <output name="html" file="index.5.html"/>
-        </test>
-
+        The tests use a small database fixture (test-data/antismash_test_db: MITE and a
+        single pressed TransATor profile), which is enough for minimal runs. Analyses
+        that need the large databases (ClusterBlast, Pfam, TIGRFam, MIBiG, ...) are
+        therefore switched off.
+        -->
+        <!-- FASTA input, genes called with Prodigal -->
         <test expect_num_outputs="2">
-            <param name="infile" value="sequence.gb"/>
-            <conditional name="cond_db">
-                <param name="database" value="cached"/>
-                <param name="databases" value="antismash_databases_8.0.4"/>
-            </conditional>
-            <conditional name="cond_taxon">
-                <param name="taxon" value="bacteria"/>
-                <param name="genefinding_tool" value="prodigal"/>
-                <param name="tigrfam" value="true"/>
-            </conditional>
-            <param name="clusterhmmer" value="true"/>
-            <param name="cb_general" value="true"/>
+            <param name="infile" value="sequence.fasta"/>
+            <param name="databases" value="antismash_databases_test"/>
+            <param name="minimal" value="true"/>
+            <param name="cb_knownclusters" value="false"/>
+            <param name="cb_subclusters" value="false"/>
             <param name="outputs" value="html,log"/>
             <output name="html" ftype="html">
                 <assert_contents>
-                    <has_text text="antiSMASH"/>
+                    <has_text text="ARBH01000003.1"/>
+                    <has_text text="region001"/>
                 </assert_contents>
             </output>
             <output name="log">
@@ -284,26 +209,42 @@
                 </assert_contents>
             </output>
         </test>
-
-        <test expect_num_outputs="3">
-            <param name="infile" value="sequence.fasta"/>
-            <conditional name="cond_db">
-                <param name="database" value="cached"/>
-                <param name="databases" value="antismash_databases_8.0.4"/>
+        <!-- GenBank input (without gene annotation, so Prodigal is used); GenBank, EMBL and archive outputs; advanced options -->
+        <test expect_num_outputs="4">
+            <param name="infile" value="sequence.gb"/>
+            <param name="databases" value="antismash_databases_test"/>
+            <param name="minimal" value="true"/>
+            <conditional name="cond_taxon">
+                <param name="taxon" value="bacteria"/>
+                <param name="genefinding_tool" value="prodigal"/>
             </conditional>
             <param name="cb_knownclusters" value="false"/>
             <param name="cb_subclusters" value="false"/>
-            <param name="asf" value="false"/>
             <param name="tta_threshold" value="0.7"/>
-            <param name="outputs" value="html,embl,all"/>
-            <output_collection name="embl" type="list">
+            <section name="advanced_options">
+                <param name="hmmdetection_strictness" value="strict"/>
+            </section>
+            <param name="outputs" value="html,gb,embl,all"/>
+            <output_collection name="genbank" type="list" count="2">
+                <element name="ARBH01000003.1.region001" ftype="genbank">
+                    <assert_contents>
+                        <has_text text="region"/>
+                    </assert_contents>
+                </element>
+                <element name="input_tempfile" ftype="genbank">
+                    <assert_contents>
+                        <has_text text="antiSMASH-Data-START"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="embl" type="list" count="2">
                 <element name="input_tempfile" ftype="embl">
                     <assert_contents>
                         <has_text text="antiSMASH-Data-START"/>
                     </assert_contents>
                 </element>
             </output_collection>
-            <output_collection name="archive" type="list">
+            <output_collection name="archive" type="list" count="1">
                 <element name="input_tempfile" ftype="zip">
                     <assert_contents>
                         <has_size min="1"/>
@@ -316,7 +257,60 @@
                 </assert_contents>
             </output>
         </test>
-        -->
+        <!-- native antiSMASH sideload JSON -->
+        <test expect_num_outputs="1">
+            <param name="infile" value="sequence.fasta"/>
+            <param name="databases" value="antismash_databases_test"/>
+            <param name="minimal" value="true"/>
+            <param name="cb_knownclusters" value="false"/>
+            <param name="cb_subclusters" value="false"/>
+            <section name="sideload">
+                <param name="format" value="native"/>
+                <param name="file" value="sideload.json"/>
+            </section>
+            <output name="html" ftype="html">
+                <assert_contents>
+                    <has_text text="Example tool"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- hAMRonize summary converted to a sideload JSON -->
+        <test expect_num_outputs="1">
+            <param name="infile" value="sequence.fasta"/>
+            <param name="databases" value="antismash_databases_test"/>
+            <param name="minimal" value="true"/>
+            <param name="cb_knownclusters" value="false"/>
+            <param name="cb_subclusters" value="false"/>
+            <section name="sideload">
+                <param name="format" value="harmonize"/>
+                <param name="file" value="harmonize.json"/>
+            </section>
+            <output name="html" ftype="html">
+                <assert_contents>
+                    <has_text text="hAMRonize"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- gene annotation from GFF3 -->
+        <test expect_num_outputs="2">
+            <param name="infile" value="sequence_long.fasta"/>
+            <param name="genefinding_gff3" value="annotation.gff3"/>
+            <param name="databases" value="antismash_databases_test"/>
+            <param name="minimal" value="true"/>
+            <param name="cb_knownclusters" value="false"/>
+            <param name="cb_subclusters" value="false"/>
+            <param name="outputs" value="html,log"/>
+            <output name="html" ftype="html">
+                <assert_contents>
+                    <has_text text="antiSMASH"/>
+                </assert_contents>
+            </output>
+            <output name="log">
+                <assert_contents>
+                    <has_text text="antiSMASH status: SUCCESS"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help>
 <![CDATA[
@@ -357,7 +351,7 @@ The EMBL/GenBank file can be viewed in a genome browser such as Artemis.
 
 antiSMASH requires external databases (PFAM, ClusterBlast, MIBiG, ...). These are installed
 with the "Download antiSMASH databases" data manager and selected in the "AntiSMASH databases"
-dropdown. Use the "Bundled" option only if no databases are needed for the chosen analyses.
+dropdown.
 
 ]]>
     </help>
