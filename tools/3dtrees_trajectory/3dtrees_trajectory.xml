@@ -1,0 +1,141 @@
+<tool id="3dtrees_trajectory" name="3Dtrees: Trajectory and Occlusion" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>estimate a lidar sensor path and map occlusion</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_trajectory:@TOOL_VERSION@</container>
+    </requirements>
+    <stdio>
+        <exit_code range=":-1" level="fatal" description="Trajectory process terminated by a signal"/>
+        <exit_code range="2" level="fatal" description="Invalid input, static acquisition, or processing error"/>
+        <exit_code range="3" level="fatal" description="GPS time is unusable"/>
+        <exit_code range="4" level="fatal" description="No usable trajectory"/>
+        <exit_code range="1" level="fatal" description="Trajectory process failed"/>
+        <exit_code range="5:" level="fatal" description="Trajectory process failed"/>
+    </stdio>
+    <version_command>python /src/run.py --version</version_command>
+    <command><![CDATA[
+        python /src/run.py
+        #for $cloud in $point_cloud
+            '$cloud'
+        #end for
+        -o trajectory.csv
+        --geojson trajectory.geojson
+        --occlusion-copc occlusion.copc.laz
+        --occlusion-cog occlusion.tif
+        #if $dtm
+            --dtm '$dtm'
+        #end if
+        #if $delivered_trajectory
+            --trajectory '$delivered_trajectory'
+        #end if
+        --threads \${GALAXY_SLOTS:-10}
+    ]]></command>
+    <inputs>
+        <param name="point_cloud" type="data" format="las,laz" multiple="true" label="Standardized LAS/LAZ point cloud" help="Select one dataset or a list from the same acquisition in collection order."/>
+        <param argument="--dtm" type="data" format="tiff" optional="true" label="Digital terrain model" help="Select a GeoTIFF in the point cloud's CRS. Without it, ground height is estimated from the lowest returns."/>
+        <param name="delivered_trajectory" argument="--trajectory" type="data" format="csv,tabular" optional="true" label="Delivered trajectory" help="A comma-separated 3Dtrees trajectory with time,x,y,z in the point cloud's GPS clock and CRS. Occlusion uses these positions when supplied."/>
+    </inputs>
+    <outputs>
+        <data name="trajectory_csv" format="csv" from_work_dir="trajectory.csv" label="${tool.name} on ${on_string}: Trajectory CSV"/>
+        <data name="trajectory_geojson" format="geojson" from_work_dir="trajectory.geojson" label="${tool.name} on ${on_string}: Trajectory GeoJSON"/>
+        <data name="occlusion_copc" format="laz" from_work_dir="occlusion.copc.laz" label="${tool.name} on ${on_string}: Occlusion COPC"/>
+        <data name="occlusion_cog" format="tiff" from_work_dir="occlusion.tif" label="${tool.name} on ${on_string}: Occlusion COG"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="4">
+            <param name="point_cloud" value="flight.laz" ftype="laz"/>
+            <output name="trajectory_csv" ftype="csv">
+                <assert_contents>
+                    <has_line line="# format: 3dtrees-trajectory/2"/>
+                    <has_line line="time,x,y,z,roll,pitch,yaw,name"/>
+                </assert_contents>
+            </output>
+            <output name="trajectory_geojson" ftype="geojson">
+                <assert_contents>
+                    <has_json_property_with_value property="type" value='"FeatureCollection"'/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_copc" ftype="laz">
+                <assert_contents>
+                    <has_size min="1"/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_cog" ftype="tiff">
+                <assert_contents>
+                    <has_size min="1"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="4">
+            <param name="point_cloud" value="flight_first.laz,flight_second.laz" ftype="laz"/>
+            <param name="dtm" value="terrain.tif" ftype="tiff"/>
+            <param name="delivered_trajectory" value="delivered.csv" ftype="csv"/>
+            <output name="trajectory_csv" ftype="csv">
+                <assert_contents>
+                    <has_line line="time,x,y,z,roll,pitch,yaw,name"/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_copc" ftype="laz">
+                <assert_contents>
+                    <has_size min="1"/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_cog" ftype="tiff">
+                <assert_contents>
+                    <has_size min="1"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true" expect_exit_code="3">
+            <param name="point_cloud" value="constant_clock.laz" ftype="laz"/>
+            <assert_stderr>
+                <has_text text="GPS time must vary"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help><![CDATA[
+Estimate the flight or walking path of a moving lidar scanner (ULS or MLS).
+Use the standardized LAS/LAZ files from one acquisition, in collection order.
+All files must share the same metric coordinates and GPS clock. Preserve
+GPS time, return metadata, scan angles, point sources and scanner channels.
+The tool fits a path from multi-return pulse lines or usable scan angles.
+Single-return data without usable scan angles needs a delivered moving path.
+
+An optional digital terrain model must declare the same CRS as the point
+cloud. Nodata and uncovered cells use the lowest-hit ground estimate.
+Both occlusion outputs use 0.5 m voxels.
+
+**Outputs**
+
+- **Trajectory CSV** with estimated positions, their GPS times and quality metadata.
+- **Trajectory GeoJSON** with segments in WGS84 when the input CRS is known.
+- **Occlusion COPC** with voxel classes, traversal counts and height above ground.
+- **Occlusion COG** with the occluded fraction by height band and an unobserved-column band.
+
+With a delivered path, the tool uses it for occlusion and still tries to
+estimate the trajectory outputs. Those outputs can be empty if fitting fails.
+If the estimated path succeeds but occlusion fails, the occlusion outputs can
+be empty and the tool records the warning in the CSV and job stderr.
+
+**Exit codes**
+
+- **0**: Trajectory estimation or delivered-path occlusion succeeded.
+- **2**: Invalid input, static terrestrial scan (TLS), or processing/output error.
+- **3**: Missing, nonfinite or constant GPS time prevents path alignment.
+- **4**: No usable path could be fitted and no delivered path supports occlusion.
+
+Galaxy marks refusals as failed jobs. The reason is in the job's stderr.
+    ]]></help>
+    <citations>
+        <citation type="bibtex">
+@misc{3dtrees_trajectory,
+    author = {{3Dtrees Team}},
+    title = {3dtrees_trajectory},
+    url = {https://github.com/3dtrees-earth/3dtrees_trajectory}
+}
+        </citation>
+    </citations>
+</tool>
