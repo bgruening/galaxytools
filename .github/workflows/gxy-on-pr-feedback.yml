@@ -115,6 +115,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # A tool dir holds a tool XML. A category folder (tools/image_processing)
+          # holds none, only tool dirs.
+          is_tool() { find "tools/$1" -maxdepth 1 -name '*.xml' ! -name macros.xml 2>/dev/null | grep -q .; }
           # PR title format: "tool_dir: auto-generated tool wrapper (issue #N)"
           PR_TITLE=$(gh pr view $PR_NUMBER --json title --jq '.title' 2>/dev/null || echo "")
           TOOL_DIR=$(echo "$PR_TITLE" | cut -d':' -f1 | xargs)
@@ -126,14 +129,22 @@ jobs:
           fi
           # Fallback: derive from the PR's changed files under tools/
           if [ -z "$TOOL_DIR" ]; then
-            TOOL_DIR=$(gh pr diff $PR_NUMBER --name-only | grep -oP '^tools/\K[^/]+' | sort -u | head -1)
+            TOOL_DIR=$(gh pr diff $PR_NUMBER --name-only | grep -oP '^tools/\K[^/]+(/[^/]+)?' | sort -u | head -1)
+            # The second part only counts under a category folder.
+            if is_tool "${TOOL_DIR%%/*}" || [ ! -d "tools/$TOOL_DIR" ]; then TOOL_DIR=${TOOL_DIR%%/*}; fi
             [ -n "$TOOL_DIR" ] && echo "Derived tool directory from PR diff: $TOOL_DIR"
           fi
           # Tools can sit in a category folder (tools/image_processing/imagej2):
-          # look a bare name up one level down.
-          if [ -n "$TOOL_DIR" ] && [ ! -d "tools/$TOOL_DIR" ]; then
-            MATCH=$(find tools -mindepth 2 -maxdepth 2 -type d -name "$TOOL_DIR" -printf '%P\n')
-            if [ "$(echo "$MATCH" | grep -c .)" = 1 ]; then
+          # look a bare name up there. Only a tool dir under a category folder
+          # counts, not e.g. a tool's own scripts/ folder.
+          if [ -n "$TOOL_DIR" ] && [ ! -d "tools/$TOOL_DIR" ] && [[ "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]]; then
+            MATCH=$(for d in tools/*/"$TOOL_DIR"; do d=${d#tools/}; is_tool "$d" && ! is_tool "${d%%/*}" && echo "$d"; done; true)
+            if [ "$(echo "$MATCH" | grep -c .)" -gt 1 ]; then
+              echo "Tool name $TOOL_DIR is in several category folders, can't tell which:"
+              echo "$MATCH"
+              exit 1
+            fi
+            if [ -n "$MATCH" ]; then
               TOOL_DIR=$MATCH
               echo "Found the tool in a category folder: $TOOL_DIR"
             fi
@@ -149,6 +160,10 @@ jobs:
           # [A-Za-z0-9_.-] but resolve outside tools/. Same for each part.
           if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?$ ]]; then
             echo "Refusing unsafe tool directory name: $TOOL_DIR"
+            exit 1
+          fi
+          if [ ! -d "tools/$TOOL_DIR" ]; then
+            echo "No tool folder tools/$TOOL_DIR"
             exit 1
           fi
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
