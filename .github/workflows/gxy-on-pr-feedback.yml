@@ -117,7 +117,7 @@ jobs:
         run: |
           # A tool dir holds a tool XML. A category folder (tools/image_processing)
           # holds none, only tool dirs.
-          is_tool() { find "tools/$1" -maxdepth 1 -name '*.xml' ! -name macros.xml 2>/dev/null | grep -q .; }
+          is_tool() { find "tools/$1" -maxdepth 1 -name '*.xml' ! -name '*macros*.xml' ! -name '*dependencies.xml' ! -name datatypes_conf.xml 2>/dev/null | grep -q .; }
           # PR title format: "tool_dir: auto-generated tool wrapper (issue #N)"
           PR_TITLE=$(gh pr view $PR_NUMBER --json title --jq '.title' 2>/dev/null || echo "")
           TOOL_DIR=$(echo "$PR_TITLE" | cut -d':' -f1 | xargs)
@@ -149,6 +149,10 @@ jobs:
               echo "Found the tool in a category folder: $TOOL_DIR"
             fi
           fi
+          # A category folder can hold a tool of its own name (text_processing/text_processing).
+          if [[ -n "$TOOL_DIR" && "$TOOL_DIR" != */* ]] && [ -d "tools/$TOOL_DIR" ] && ! is_tool "$TOOL_DIR" && is_tool "$TOOL_DIR/$TOOL_DIR"; then
+            TOOL_DIR=$TOOL_DIR/$TOOL_DIR
+          fi
           if [ -z "$TOOL_DIR" ]; then
             echo "Could not determine tool directory from PR title, .tool-name, or changed files"
             exit 1
@@ -162,8 +166,18 @@ jobs:
             echo "Refusing unsafe tool directory name: $TOOL_DIR"
             exit 1
           fi
-          if [ ! -d "tools/$TOOL_DIR" ]; then
-            echo "No tool folder tools/$TOOL_DIR"
+          # Only a real tool folder: no symlink, no category folder, and no folder
+          # inside another tool (e.g. music_deconvolution/scripts).
+          if [ -L "tools/${TOOL_DIR%%/*}" ] || [ -L "tools/$TOOL_DIR" ]; then
+            echo "Refusing tools/$TOOL_DIR: it goes through a symlink"
+            exit 1
+          fi
+          if ! is_tool "$TOOL_DIR"; then
+            echo "No tool folder tools/$TOOL_DIR (no tool XML in it)"
+            exit 1
+          fi
+          if [[ "$TOOL_DIR" == */* ]] && is_tool "${TOOL_DIR%%/*}"; then
+            echo "tools/$TOOL_DIR is inside the tool ${TOOL_DIR%%/*}, not a tool of its own"
             exit 1
           fi
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
