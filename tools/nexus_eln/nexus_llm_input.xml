@@ -1,0 +1,293 @@
+<tool id="nexus_llm_input" name="NeXus ELN LLM input" version="@TOOL_VERSION@" profile="@PROFILE@">
+    <description>for one raw file: instructions, header, record and context texts</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements_eln"/>
+    <required_files>
+        <include path="nexus_llm_input.py"/>
+    </required_files>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        python '$__tool_directory__/nexus_llm_input.py'
+        '$bundle'
+        #if $stage_cond.stage == "eln":
+            --eln '$stage_cond.eln'
+        #end if
+        @PLUGIN_ARGS@
+        --out-dir llm_context
+        --report '$llm_input_report'
+    ]]></command>
+    <inputs>
+        <param name="bundle" type="data" format="json" label="Context bundle" help="Written by the Zenodo download for NOMAD tool: record metadata and the text of one raw file's context files, PDF text included."/>
+        <conditional name="stage_cond">
+            <param name="stage" type="select" label="LLM job">
+                <option value="eln" selected="true">Fill the ELN</option>
+                <option value="detect">Detect the technique and scan mode</option>
+            </param>
+            <when value="eln">
+                <param name="eln" type="data" format="yaml" label="Rule ELN" help="Written by the NeXus ELN builder for the same raw file. Its values are kept; the LLM fills only the empty fields."/>
+            </when>
+            <when value="detect"/>
+        </conditional>
+        <expand macro="plugin_inputs"/>
+    </inputs>
+    <outputs>
+        <collection name="llm_context" type="list" label="${bundle.element_identifier}: LLM input">
+            <discover_datasets pattern="__designation__" directory="llm_context" format="txt" sort_by="filename"/>
+        </collection>
+        <data name="llm_input_report" format="json" label="${bundle.element_identifier}: LLM input report"/>
+    </outputs>
+    <tests>
+        <!-- Test 01: STM file of Zenodo record 17202182 (CC-BY-4.0): header, readme, PDF text;
+             the broken PDF is left out. Elements are sorted by file name. The header is the
+             leading text of a header-only .sxm, which gwyddionpy cannot read. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <conditional name="stage_cond">
+                <param name="stage" value="eln"/>
+                <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            </conditional>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="T190613_004_header.json" ftype="json"/>
+            <output_collection name="llm_context" type="list" count="6">
+                <element name="Information.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Nanonis file T190613_004.sxm"/>
+                    </assert_contents>
+                </element>
+                <element name="QPI_visualization_of_Interband_Pairing-SM.pdf" ftype="txt">
+                    <assert_contents>
+                        <has_text text="low-temperature scanning tunneling microscope (JT-SPECS GmbH)"/>
+                    </assert_contents>
+                </element>
+                <element name="T190613_004_header.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text=":REC_DATE:"/>
+                        <has_text text=":SCANIT_END:"/>
+                    </assert_contents>
+                </element>
+                <element name="base_eln.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="definition: NXstm"/>
+                        <has_text text="scan_mode: constant current"/>
+                        <!-- Always written by the LLM; the record text stays in citeID. -->
+                        <has_text text="experiment_description: null"/>
+                        <has_text text="- OPEN DATASET of the publication"/>
+                        <has_text text="chemical_formula: null"/>
+                        <has_text text="model/@version: null"/>
+                    </assert_contents>
+                </element>
+                <element name="eln_instructions.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Application definition: NXstm."/>
+                        <has_text text="   constant height, constant current&#10;"/>
+                        <has_text text="FIELDS YOU MAY FILL"/>
+                        <has_text text="OUTPUT FORMAT"/>
+                        <not_has_text text="NXafm"/>
+                        <not_has_text text="HINTS"/>
+                    </assert_contents>
+                </element>
+                <element name="record.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Title: Revealing band-hybrid Cooper pairs"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="llm_input_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="status" value="&quot;ok&quot;"/>
+                    <has_json_property_with_value property="reason" value="&quot;unreadable&quot;"/>
+                    <has_text text="&quot;2H-MoS2(001) flake&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 02: AFM .sxm (header of a pynxtools-spm test file) and a readme; scan_mode is left to the LLM. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_afm.json" ftype="json"/>
+            <conditional name="stage_cond">
+                <param name="stage" value="eln"/>
+                <param name="eln" value="eln_afm.yaml" ftype="yaml"/>
+            </conditional>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="afm_header.json" ftype="json"/>
+            <output_collection name="llm_context" type="list" count="5">
+                <element name="A151216.123306-02602_header.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text=":SCANIT_END:"/>
+                    </assert_contents>
+                </element>
+                <element name="base_eln.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="definition: NXafm"/>
+                        <has_text text="scan_mode: null"/>
+                    </assert_contents>
+                </element>
+                <element name="eln_instructions.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Application definition: NXafm."/>
+                        <has_text text="peak force tapping mode"/>
+                    </assert_contents>
+                </element>
+                <element name="readme.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="tapping mode"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test 03: STS without context files and without a header. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_without_context.json" ftype="json"/>
+            <conditional name="stage_cond">
+                <param name="stage" value="eln"/>
+                <param name="eln" value="eln_sts.yaml" ftype="yaml"/>
+            </conditional>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="no_header.json" ftype="json"/>
+            <output_collection name="llm_context" type="list" count="3">
+                <element name="base_eln.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="definition: NXsts"/>
+                    </assert_contents>
+                </element>
+                <element name="eln_instructions.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="constant height, constant current, constant spacing"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test 04: no technique, so no definition: only the base ELN; the check step keeps it. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_without_context.json" ftype="json"/>
+            <conditional name="stage_cond">
+                <param name="stage" value="eln"/>
+                <param name="eln" value="eln_no_technique.yaml" ftype="yaml"/>
+            </conditional>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="no_header.json" ftype="json"/>
+            <output_collection name="llm_context" type="list" count="1">
+                <element name="base_eln.txt" ftype="txt">
+                    <assert_contents>
+                        <not_has_text text="definition:"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="llm_input_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="status" value="&quot;no_definition&quot;"/>
+                    <has_json_property_with_value property="instructions" value="null"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 05: detection job: the Detection section, a gwyddionpy header (JSON), the record and
+             context texts; no base ELN. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <conditional name="stage_cond">
+                <param name="stage" value="detect"/>
+            </conditional>
+            <expand macro="test_plugin_files"/>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
+            <output_collection name="llm_context" type="list" count="5">
+                <element name="T190613_004_header.json" ftype="txt">
+                    <assert_contents>
+                        <has_text text="&quot;Z-Controller::Controller status&quot;: &quot;ON&quot;"/>
+                        <has_text text="&quot;read_with&quot;: &quot;gwyddionpy (nanonis)&quot;"/>
+                    </assert_contents>
+                </element>
+                <element name="eln_instructions.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Find the technique and the scan mode"/>
+                        <has_text text="AFM: channels such as Frequency_Shift"/>
+                        <not_has_text text="FIELDS YOU MAY FILL"/>
+                    </assert_contents>
+                </element>
+                <element name="record.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Title: Revealing band-hybrid Cooper pairs"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="llm_input_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="stage" value="&quot;detect&quot;"/>
+                    <has_json_property_with_value property="instructions" value="[&quot;Detection&quot;]"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 06: the definition's section must list its allowed values and the fields of the rules. -->
+        <test expect_failure="true">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <conditional name="stage_cond">
+                <param name="stage" value="eln"/>
+                <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            </conditional>
+            <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="instructions" value="eln_instructions_incomplete.md" ftype="txt"/>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
+            <assert_stderr>
+                <has_text text="Instructions for NXstm do not match the rules; missing: ['constant height', 'constant current']"/>
+            </assert_stderr>
+        </test>
+        <!-- Test 07: the detection job needs a Detection section. -->
+        <test expect_failure="true">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <conditional name="stage_cond">
+                <param name="stage" value="detect"/>
+            </conditional>
+            <param name="rules" value="eln_rules.yaml" ftype="yaml"/>
+            <param name="instructions" value="eln_instructions_incomplete.md" ftype="txt"/>
+            <param name="header" value="const_dos_header.json" ftype="json"/>
+            <assert_stderr>
+                <has_text text="No section Detection in the instructions file"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Writes the input of one [LLM Hub](https://galaxyproject.org/news/2025-10-10-llm-hub/) job for
+one raw file, so an LLM can fill the ELN fields the rule-based ELN builder left empty.
+
+The domain knowledge comes from the pynxtools plugin as input files, e.g. the `galaxy/` folder of
+[pynxtools-spm](https://github.com/FAIRmat-NFDI/pynxtools-spm):
+
+- **ELN rules** (`eln_rules.yaml`): definitions, fields the LLM may fill, allowed values.
+- **ELN instructions** (`eln_instructions.md`): sections `# <name>`; only the sections of the job
+  are sent.
+- **Raw file header**: the JSON of the plugin's raw file header tool.
+
+Two jobs (**LLM job**):
+
+- **Detect the technique and scan mode**, before the ELN builder: the `Detection` section. Its
+  answer goes to the NeXus ELN builder.
+- **Fill the ELN**: the `Common` section, the section of the ELN's definition (`NXstm`, ...) and
+  `Output`.
+
+-----
+
+**Outputs**
+
+- **LLM input** (list of text files):
+  - `eln_instructions.txt`: the job's sections. The tool stops if one is missing, or if it misses a
+    technique, field or allowed value of the rules.
+  - `base_eln.txt` (ELN job only): the rule ELN. Fields the LLM may fill are `null`;
+    `experiment_description` is always `null`, as the LLM writes it (the record text stays in `citeID`).
+  - `record.txt`: the record's title and description.
+  - One text file per context file with text; a PDF's text keeps the PDF's name.
+  - `<raw file>_header.json`: the raw file's metadata; `<raw file>_header.txt` when the header is
+    the file's leading text. Left out when the header is empty.
+- **LLM input report**: the files written, the files left out (no text, broken PDF) and the
+  `Example:` values of the instructions, for the check step.
+
+In the ELN job without a known definition only `base_eln.txt` is written (status `no_definition`).
+
+Mapped over the raw files, the LLM input becomes a nested list: one LLM Hub job per raw file.
+    ]]></help>
+    <citations>
+        <expand macro="citation_pynxtools_spm"/>
+    </citations>
+    <expand macro="creators"/>
+</tool>
