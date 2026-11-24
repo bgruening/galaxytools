@@ -1,0 +1,95 @@
+<tool id="spm_raw_header" name="SPM raw file header" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>as JSON, with gwyddionpy</description>
+    <macros>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <required_files>
+        <include path="raw_header.py"/>
+    </required_files>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        #import re
+        ## The element identifier keeps the file's original name and extension.
+        #set $raw_name = re.sub(r'[^\w.\-]', '_', str($raw.element_identifier))
+        ln -s '$raw' '$raw_name' &&
+        python '$__tool_directory__/raw_header.py'
+        '$raw_name'
+        --name '$raw_name'
+        --header '$header'
+    ]]></command>
+    <inputs>
+        <param name="raw" type="data" format="binary,txt" label="Raw file" help="A raw file of a format gwyddionpy reads (e.g. Nanonis .sxm, RHK .sm4, Bruker .spm), or any file with a text header."/>
+    </inputs>
+    <outputs>
+        <data name="header" format="json" label="${raw.element_identifier}: header"/>
+    </outputs>
+    <tests>
+        <!-- Test 01: a Nanonis .sxm image, read with gwyddionpy; the 8 channels share their metadata. -->
+        <test expect_num_outputs="1">
+            <param name="raw" value="const_dos_No14_003.sxm" ftype="binary"/>
+            <output name="header" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="file" value="&quot;const_dos_No14_003.sxm&quot;"/>
+                    <has_json_property_with_value property="read_with" value="&quot;gwyddionpy (nanonis)&quot;"/>
+                    <has_json_property_with_value property="Z-Controller::Controller status" value="&quot;ON&quot;"/>
+                    <has_json_property_with_value property="Bias::Bias (V)" value="2.1"/>
+                    <has_text text="Z-Controller::Controller status" n="1"/>
+                    <not_has_text text="&quot;data&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 02: a Nanonis .dat spectrum: gwyddionpy gives no metadata, so the text before [DATA]
+             is the header. sts_header_cut.dat is a pynxtools-spm test file (Apache-2.0), cut after
+             two data rows. -->
+        <test expect_num_outputs="1">
+            <param name="raw" value="sts_header_cut.dat" ftype="txt"/>
+            <output name="header" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="read_with" value="&quot;leading text; gwyddionpy: no metadata (nanonis_spec)&quot;"/>
+                    <has_text text="Experiment\tbias spectroscopy"/>
+                    <not_has_text text="[DATA]"/>
+                    <not_has_text text="-3.0000001E-1"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 03: a file no reader knows still gives its text. -->
+        <test expect_num_outputs="1">
+            <param name="raw" value="broken.sxm" ftype="binary"/>
+            <output name="header" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="read_with" value="&quot;leading text; gwyddionpy: UnsupportedFormatError&quot;"/>
+                    <has_json_property_with_value property="text" value="&quot;This is not a Nanonis SXM file.&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Writes the header (metadata) of a raw file as JSON, for the ELN tools. The header is read with
+[gwyddionpy](https://github.com/FAIRmat-NFDI/gwyddionPy), which reads many scanning probe
+microscopy formats, also binary ones such as RHK `.sm4`.
+
+If gwyddionpy cannot read the file, or finds no metadata, the header is the file's leading text: the
+text before the first binary byte or data marker (`[DATA]` of Nanonis `.dat` files), at most 64 kB.
+
+-----
+
+**Output**
+
+A JSON file with `file` (the raw file's name) and `read_with` (how the header was read), then:
+
+- **gwyddionpy:** `source_format`, `meta` (the metadata all channels share) and `channels` (per
+  channel its name, size, units, shape and its own `meta`). A value with a unit is written as
+  `{"value": 2.1, "unit": "V"}`. This is gwyddionpy's
+  [JSON export](https://github.com/FAIRmat-NFDI/gwyddionPy/blob/main/docs/user/usage.md), with
+  the shared metadata written once. No pixel data.
+- **leading text:** `text`, the file's own header lines.
+    ]]></help>
+    <expand macro="creators"/>
+    <citations>
+        <expand macro="citation_gwyddionpy"/>
+    </citations>
+</tool>

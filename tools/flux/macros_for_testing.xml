@@ -1,0 +1,249 @@
+<macros>
+    <!-- ci_tests run without models and without a GPU (as in CI): each job
+         starts flux.py, which stops at the GPU check, and the tests check the
+         command line built from the huggingface data table.
+
+         real_tests need a GPU and the models from download_models.py mounted
+         at /data/db/flux_models. To run them, use a copy of flux.xml:
+           sed -i 's/macro="ci_tests"/macro="real_tests"/' flux.xml
+         GPU output is not bit-exact, so they check the image size. An empty
+         width/height gives the size of the input image (fox.png is 256x256).
+         Both sets read test-data/huggingface.loc, which also has rows of other
+         tools and the FLUX.1 rows of the older FLUX versions, to show the
+         model select only offers the models flux.py supports. -->
+
+    <!-- the decoy is the FLUX.1 [dev] row of FLUX 2024+galaxy4 and older
+         (as on usegalaxy.eu), so Galaxy must reject the value before any job
+         runs (expect_failure then skips the assertions). If
+         the filter let the row through, a job would be built and
+         assert_command fails -->
+    <xml name="decoy_test">
+        <test expect_failure="true">
+            <conditional name="task">
+                <param name="task_selector" value="generate"/>
+                <param name="flux_models" value="black-forest-labs-FLUX.1-dev"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="file"/>
+                <param name="prompt" value="flux_test.txt"/>
+            </conditional>
+            <assert_command>
+                <not_has_text text="flux.py"/>
+            </assert_command>
+        </test>
+    </xml>
+
+    <xml name="ci_tests">
+        <test expect_failure="true">
+            <conditional name="task">
+                <param name="task_selector" value="generate"/>
+                <param name="flux_models" value="black-forest-labs/FLUX.2-klein-4B"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="text"/>
+                <param name="prompt" value="A red fox reading a newspaper in a cozy library"/>
+            </conditional>
+            <section name="advanced">
+                <param name="width" value="512"/>
+                <param name="height" value="768"/>
+                <param name="seed" value="7"/>
+            </section>
+            <assert_command>
+                <has_text text="export HF_HOME='/data/db/flux_models'"/>
+                <has_text text="export HF_HUB_OFFLINE=1"/>
+                <has_text text="export HF_HUB_DISABLE_TELEMETRY=1"/>
+                <has_text text="--model 'black-forest-labs/FLUX.2-klein-4B'"/>
+                <has_text text="--task 'generate'"/>
+                <has_text text="--prompt-file"/>
+                <has_text text="--width 512"/>
+                <has_text text="--height 768"/>
+                <has_text text="--seed 7"/>
+                <not_has_text text="--image"/>
+                <not_has_text text="--mask"/>
+                <not_has_text text="--steps"/>
+                <not_has_text text="--guidance"/>
+                <not_has_text text="--no-upsample"/>
+            </assert_command>
+            <assert_stderr>
+                <has_text text="FLUX needs a CUDA GPU"/>
+            </assert_stderr>
+        </test>
+        <test expect_failure="true">
+            <conditional name="task">
+                <param name="task_selector" value="generate"/>
+                <param name="flux_models" value="black-forest-labs/flux-3-image-klein"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="file"/>
+                <param name="prompt" value="flux_test.txt"/>
+            </conditional>
+            <assert_command>
+                <has_text text="--model 'black-forest-labs/flux-3-image-klein'"/>
+                <has_text text="--task 'generate'"/>
+                <not_has_text text="--image"/>
+                <not_has_text text="--width"/>
+                <not_has_text text="--height"/>
+            </assert_command>
+            <assert_stderr>
+                <has_text text="FLUX needs a CUDA GPU"/>
+            </assert_stderr>
+        </test>
+        <test expect_failure="true">
+            <conditional name="task">
+                <param name="task_selector" value="edit"/>
+                <param name="flux_models" value="black-forest-labs/flux-3-image-klein"/>
+                <param name="images" value="fox.png,fox_mask.png" ftype="png"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="file"/>
+                <param name="prompt" value="flux_test.txt"/>
+            </conditional>
+            <section name="advanced">
+                <param name="steps" value="8"/>
+                <param name="guidance" value="2.5"/>
+                <param name="upsample" value="false"/>
+            </section>
+            <assert_command>
+                <has_text text="--task 'edit'"/>
+                <has_text text="--image '"/>
+                <has_text text="--steps 8"/>
+                <has_text text="--guidance 2.5"/>
+                <has_text text="--no-upsample"/>
+            </assert_command>
+            <assert_stderr>
+                <has_text text="FLUX needs a CUDA GPU"/>
+            </assert_stderr>
+        </test>
+        <test expect_failure="true">
+            <conditional name="task">
+                <param name="task_selector" value="inpaint"/>
+                <param name="flux_models" value="black-forest-labs/FLUX.2-klein-4B"/>
+                <param name="image" value="fox.png" ftype="png"/>
+                <param name="mask" value="fox_mask.png" ftype="png"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="file"/>
+                <param name="prompt" value="flux_test.txt"/>
+            </conditional>
+            <assert_command>
+                <has_text text="--model 'black-forest-labs/FLUX.2-klein-4B'"/>
+                <has_text text="--task 'inpaint'"/>
+                <has_text text="--mask '"/>
+            </assert_command>
+            <assert_stderr>
+                <has_text text="FLUX needs a CUDA GPU"/>
+            </assert_stderr>
+        </test>
+        <expand macro="decoy_test"/>
+    </xml>
+
+    <xml name="real_tests">
+        <test expect_num_outputs="1">
+            <conditional name="task">
+                <param name="task_selector" value="generate"/>
+                <param name="flux_models" value="black-forest-labs/FLUX.2-klein-4B"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="text"/>
+                <param name="prompt" value="A red fox reading a newspaper in a cozy library"/>
+            </conditional>
+            <section name="advanced">
+                <param name="width" value="512"/>
+                <param name="height" value="512"/>
+            </section>
+            <output name="output" ftype="png">
+                <assert_contents>
+                    <has_image_width width="512"/>
+                    <has_image_height height="512"/>
+                    <has_image_channels channels="3"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="task">
+                <param name="task_selector" value="edit"/>
+                <param name="flux_models" value="black-forest-labs/FLUX.2-klein-4B"/>
+                <param name="images" value="fox.png" ftype="png"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="text"/>
+                <param name="prompt" value="Make it night time with moonlight through the window"/>
+            </conditional>
+            <section name="advanced">
+                <param name="width" value="512"/>
+                <param name="height" value="512"/>
+            </section>
+            <output name="output" ftype="png">
+                <assert_contents>
+                    <has_image_width width="512"/>
+                    <has_image_height height="512"/>
+                    <has_image_channels channels="3"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="task">
+                <param name="task_selector" value="inpaint"/>
+                <param name="flux_models" value="black-forest-labs/FLUX.2-klein-4B"/>
+                <param name="image" value="fox.png" ftype="png"/>
+                <param name="mask" value="fox_mask.png" ftype="png"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="text"/>
+                <param name="prompt" value="A small red scarf"/>
+            </conditional>
+            <output name="output" ftype="png">
+                <assert_contents>
+                    <has_image_width width="256"/>
+                    <has_image_height height="256"/>
+                    <has_image_channels channels="3"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="task">
+                <param name="task_selector" value="generate"/>
+                <param name="flux_models" value="black-forest-labs/flux-3-image-klein"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="text"/>
+                <param name="prompt" value="A red fox reading a newspaper in a cozy library"/>
+            </conditional>
+            <section name="advanced">
+                <param name="width" value="512"/>
+                <param name="height" value="512"/>
+            </section>
+            <output name="output" ftype="png">
+                <assert_contents>
+                    <has_image_width width="512"/>
+                    <has_image_height height="512"/>
+                    <has_image_channels channels="3"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="task">
+                <param name="task_selector" value="edit"/>
+                <param name="flux_models" value="black-forest-labs/flux-3-image-klein"/>
+                <param name="images" value="fox.png" ftype="png"/>
+            </conditional>
+            <conditional name="input_type">
+                <param name="input_type_selector" value="text"/>
+                <param name="prompt" value="Put a small red scarf around the fox's neck"/>
+            </conditional>
+            <section name="advanced">
+                <param name="width" value="512"/>
+                <param name="height" value="512"/>
+                <param name="upsample" value="false"/>
+            </section>
+            <output name="output" ftype="png">
+                <assert_contents>
+                    <has_image_width width="512"/>
+                    <has_image_height height="512"/>
+                    <has_image_channels channels="3"/>
+                </assert_contents>
+            </output>
+        </test>
+        <expand macro="decoy_test"/>
+    </xml>
+</macros>

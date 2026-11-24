@@ -1,90 +1,188 @@
-<tool id="black_forest_labs_flux" name="FLUX" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
-    <description>text-to-image model</description>
+<tool id="black_forest_labs_flux" name="FLUX" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.0">
+    <description>generate and edit images</description>
     <macros>
-        <token name="@TOOL_VERSION@">2024</token>
-        <token name="@VERSION_SUFFIX@">4</token>
+        <token name="@TOOL_VERSION@">2026</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <import>macros_for_testing.xml</import>
+        <!-- the flux rows of the huggingface table. Each task adds a filter on
+             the Hugging Face ID, so it only offers the models flux.py supports
+             for that task; the FLUX.1 rows of 2024+galaxy4 and older never match -->
+        <xml name="model_select">
+            <param name="flux_models" label="Model" type="select" help="Contact the administrator of this Galaxy instance if a model is missing">
+                <options from_data_table="huggingface">
+                    <filter type="static_value" column="4" value="flux"/>
+                    <yield/>
+                </options>
+                <validator message="No FLUX model for this task is available" type="no_options"/>
+            </param>
+        </xml>
+        <xml name="image_input" tokens="label,help">
+            <param name="image" type="data" format="png,jpg" label="@LABEL@" help="@HELP@"/>
+        </xml>
     </macros>
     <requirements>
-        <container type="docker">quay.io/galaxy/black_forest_labs_flux:2024-0</container>
+        <container type="docker">quay.io/galaxy/black_forest_labs_flux:@TOOL_VERSION@-0</container>
     </requirements>
+    <required_files>
+        <include path="flux.py"/>
+    </required_files>
     <command detect_errors="exit_code"><![CDATA[
+export HF_HOME='$task.flux_models.fields.path' &&
+export HF_HUB_OFFLINE=1 &&
+export HF_HUB_DISABLE_TELEMETRY=1 &&
 python3 '$__tool_directory__/flux.py'
-'$flux_models.fields.path'
-'$input_type_selector'
-'$prompt'
+--model '$task.flux_models'
+--task '$task.task_selector'
+#if $input_type.input_type_selector == 'file':
+    --prompt-file '$input_type.prompt'
+#else:
+    --prompt-file '$prompt_text'
+#end if
+#if $task.task_selector == 'edit':
+    #for $image in $task.images:
+        --image '$image'
+    #end for
+#elif $task.task_selector != 'generate':
+    --image '$task.image'
+#end if
+#if $task.task_selector == 'inpaint':
+    --mask '$task.mask'
+#end if
+#if $advanced.width:
+    --width $advanced.width
+#end if
+#if $advanced.height:
+    --height $advanced.height
+#end if
+#if $advanced.steps:
+    --steps $advanced.steps
+#end if
+#if str($advanced.guidance):
+    --guidance $advanced.guidance
+#end if
+--seed $advanced.seed
+#if not $advanced.upsample:
+    --no-upsample
+#end if
+--output output.png
     ]]></command>
     <configfiles>
+        <configfile name="prompt_text"><![CDATA[#if $input_type.input_type_selector == 'text'
+$input_type.prompt
+#end if]]></configfile>
     </configfiles>
     <inputs>
-        <param name="flux_models" label="Model data" type="select" help="Contact the administrator of our Galaxy instance if you miss model data">
-            <options from_data_table="huggingface">
-                <filter type="static_value" column="4" value="flux"/>
-                <filter type="static_value" column="5" value="1"/>
-            </options>
-            <validator message="No model annotation is available for FLUX" type="no_options"/>
-        </param>
+        <conditional name="task">
+            <param name="task_selector" type="select" label="Task">
+                <option value="generate" selected="true">Generate an image from the prompt</option>
+                <option value="edit">Edit or combine reference images</option>
+                <option value="inpaint">Redraw a masked part of an image (inpainting)</option>
+            </param>
+            <when value="generate">
+                <expand macro="model_select">
+                    <filter type="regexp" column="0" value="black-forest-labs/(FLUX\.2-klein-4B|flux-3-image-klein)$"/>
+                </expand>
+            </when>
+            <when value="edit">
+                <expand macro="model_select">
+                    <filter type="regexp" column="0" value="black-forest-labs/(FLUX\.2-klein-4B|flux-3-image-klein)$"/>
+                </expand>
+                <param name="images" type="data" format="png,jpg" multiple="true" label="Reference images"
+                    help="Up to 10. The prompt describes the change, or how to combine the images."/>
+            </when>
+            <when value="inpaint">
+                <expand macro="model_select">
+                    <filter type="regexp" column="0" value="black-forest-labs/FLUX\.2-klein-4B$"/>
+                </expand>
+                <expand macro="image_input" label="Image" help="The image to redraw a part of"/>
+                <param name="mask" type="data" format="png,jpg" label="Mask" help="Same size as the image: white where the image is redrawn from the prompt, black where it is kept"/>
+            </when>
+        </conditional>
         <conditional name="input_type">
             <param name="input_type_selector" type="select" label="Choose the type of input">
                 <option value="file" selected="true">File based input</option>
                 <option value="text">Text based input</option>
             </param>
             <when value="file">
-                <param name="prompt" type="data" optional="false" format="txt" label="Prompt file" help="This data will be used as prompt"/>
+                <param name="prompt" type="data" format="txt" label="Prompt file" help="The text in this file is used as the prompt"/>
             </when>
             <when value="text">
-                <param name="prompt" type="text" optional="false" label="Prompt" help="This text will be used as prompt" area="true">
+                <param name="prompt" type="text" label="Prompt" help="This text is used as the prompt" area="true">
                     <validator type="empty_field"/>
                 </param>
             </when>
         </conditional>
+        <section name="advanced" title="Advanced options">
+            <param name="width" type="integer" optional="true" min="256" max="2048" label="Width"
+                help="In pixels, a multiple of 16. Leave empty for 1024, or the size of the (first) input image"/>
+            <param name="height" type="integer" optional="true" min="256" max="2048" label="Height"
+                help="In pixels, a multiple of 16. Leave empty for 1024, or the size of the (first) input image"/>
+            <param name="steps" type="integer" optional="true" min="1" max="100" label="Inference steps" help="Leave empty for the model's recommended number"/>
+            <param name="guidance" type="float" optional="true" min="0" max="100" label="Guidance scale"
+                help="How closely the image follows the prompt. Leave empty for the model's recommended value; FLUX 3 Image Klein (distilled) has none"/>
+            <param name="seed" type="integer" value="42" label="Seed" help="The same seed and inputs give the same image"/>
+            <param name="upsample" type="boolean" checked="true" label="Expand the prompt (FLUX 3 Image Klein only)"
+                help="FLUX 3 Image Klein expects a full scene description. With this on, its prompt upsampler expands a short prompt first. Turn it off if the prompt already is a full description."/>
+        </section>
     </inputs>
     <outputs>
-        <data name="output" format="png" label="${tool.name} on ${on_string if $input_type_selector=='file' else 'text prompt'}" from_work_dir="./output.png"/>
+        <data name="output" format="png" label="${tool.name} on ${on_string if $input_type.input_type_selector == 'file' else 'text prompt'}" from_work_dir="output.png"/>
     </outputs>
     <tests>
-        <test expect_exit_code="1" expect_failure="true">
-            <param name="flux_models" value="unknown"/>
-            <param name="input_type_selector" value="file"/>
-            <param name="prompt" value="flux_test.txt"/>
-            <assert_stdout>
-                <has_text text="Invalid model!"/>
-            </assert_stdout>
-        </test>
+        <expand macro="ci_tests"/>
     </tests>
     <help><![CDATA[
-
 .. class:: infomark
 
 **What it does**
 
-FLUX is a text-to-image model that generates images from textual descriptions.
+Generates and edits images with the FLUX models by Black Forest Labs: from a text prompt, by editing or combining reference images, or by redrawing a masked part of an image.
 
-Usage
-.....
+**Tasks and models**
+
+================================= =========================================
+Task                              Models
+================================= =========================================
+Generate an image from the prompt FLUX.2 [klein] 4B, FLUX 3 Image Klein
+Edit or combine reference images  FLUX.2 [klein] 4B, FLUX 3 Image Klein (up to 10 images)
+Inpainting                        FLUX.2 [klein] 4B
+================================= =========================================
+
+FLUX.2 [klein] 4B is licensed under Apache 2.0. FLUX 3 Image Klein (FLUX Kommunity License) may not be used commercially. Which models are offered depends on what the administrator installed.
 
 **Input**
 
-1. **Model data**:
-    Select the model data from the dropdown list. The available models are dev and schnell.
-    For using dev model, make sure to not use it for commercial purposes.
-
-2. **Input Prompt**: You can provide the input prompt in two ways:
-    - **File based input**: Upload a txt file containing the prompt.
-    - **Text based input**: Enter the prompt text in the text area.
+1. **Task** and **Model**, with the images the task needs. Images are PNG or JPG.
+2. **Prompt**: a txt file, or text typed in the form. For editing it describes the change.
+3. **Advanced options**: image size (default 1024x1024, or the size of the input image), inference steps and guidance scale (default: the model's recommended values), seed, and whether FLUX 3 Image Klein expands the prompt first.
 
 **Output**
 
-This response is saved in the `output.png` file.
-
+A PNG image.
     ]]></help>
     <citations>
         <citation type="bibtex">
             @misc{flux,
-                author = {black forest labs},
-                title = {FLUX github repository},
+                author = {{Black Forest Labs}},
+                title = {FLUX},
                 howpublished = {\url{https://github.com/black-forest-labs/flux}},
-                year = {2024},
-                note = {Accessed: 2024-09-04}
+                year = {2024}
+            }
+        </citation>
+        <citation type="bibtex">
+            @misc{flux2,
+                author = {{Black Forest Labs}},
+                title = {FLUX.2},
+                howpublished = {\url{https://github.com/black-forest-labs/flux2}},
+                year = {2025}
+            }
+        </citation>
+        <citation type="bibtex">
+            @misc{flux3,
+                author = {{Black Forest Labs}},
+                title = {FLUX 3 Image Klein},
+                howpublished = {\url{https://github.com/black-forest-labs/flux-3-image-klein}},
+                year = {2026}
             }
         </citation>
     </citations>

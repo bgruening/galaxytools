@@ -2,7 +2,7 @@
     <description>Call any LLM</description>
     <macros>
         <import>macros.xml</import>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
         <token name="@PROFILE@">24.0</token>
     </macros>
     <requirements>
@@ -10,15 +10,19 @@
         <requirement type="package" version="6.0.3">pyyaml</requirement>
         <requirement type="package" version="@TOOL_VERSION@">openai</requirement>
     </requirements>
+    <required_files>
+        <include path="llm_hub.py"/>
+        <include path="test-data/fake_proxy.py"/>
+    </required_files>
     <command detect_errors="exit_code"><![CDATA[
 #import json
 #import os
 #import re
 
 #set LINK_LIST = []
-#for $input_type, $param in [('text', 'text_context'), ('image', 'image_context')]
+#for $input_type, $param in [('text', 'text_context'), ('image', 'image_context'), ('audio', 'audio_context')]
     #set context = $getVar($param, None)
-    #if $model_type in [$input_type, 'multimodal'] and $context
+    #if ($model_type in [$input_type, 'multimodal'] or ($model_type == 'decision' and $input_type == 'text')) and $context
         #for $input in ($context if isinstance($context, list) else [$context])
             #set file_name = re.sub('[^\w\-]', '_', os.path.splitext($input.element_identifier)[0])
             #set link_name = '%s_%s.%s' % ($input.hid, $file_name, $input.ext)
@@ -29,10 +33,18 @@
 #end for
 #set context_files = json.dumps($LINK_LIST)
 
-#if $model_type == 'image'
+#if $model_type in ['image', 'audio', 'decision']
     #set prompt = ''
 #end if
+#set language = $model_condition.language if $model_type == 'audio' else ''
+#set audio_format = $model_condition.audio_format if $model_type == 'audio' else 'text'
 
+## For the tool tests only: models with provider "galaxy-test" use a fake proxy started in the job
+#if str($model.fields.provider) == 'galaxy-test'
+    { python '$__tool_directory__/test-data/fake_proxy.py' fake_litellm.yaml & } && trap "kill \$! 2>/dev/null" EXIT &&
+    for i in \$(seq 50); do [ -f fake_litellm.yaml ] && break; sleep 0.2; done &&
+    export LITELLM_CONFIG_FILE="\$PWD/fake_litellm.yaml" &&
+#end if
 python '$__tool_directory__/llm_hub.py'
 '$context_files'
 '$prompt'
@@ -42,13 +54,38 @@ python '$__tool_directory__/llm_hub.py'
 '$model.fields.provider'
 '$__user_id__'
 '$__galaxy_url__'
+'$language'
+'$audio_format'
+#if $model_type == 'decision'
+'$questions_json'
+#end if
     ]]></command>
+    <configfiles>
+        <configfile name="questions_json"><![CDATA[#slurp
+#import json
+#set questions = []
+#if $model_condition.model_type == 'decision'
+    #for $q in $model_condition.questions
+        #set question = {'name': str($q.name), 'type': str($q.answer.type), 'instructions': str($q.instructions)}
+        #if $q.answer.type == 'choice'
+            #silent $question.update({'options': str($q.answer.options)})
+        #elif $q.answer.type == 'score'
+            #silent $question.update({'low': str($q.answer.low), 'high': str($q.answer.high)})
+        #end if
+        #silent $questions.append($question)
+    #end for
+#end if
+$json.dumps($questions)
+]]></configfile>
+    </configfiles>
     <inputs>
         <conditional name="model_condition">
-            <param name="model_type" type="select" label="Choose the model" help="Multimodal models are capable to have image and text as input.">
+            <param name="model_type" type="select" label="Choose the model" help="Multimodal models are capable to have image and text as input. Audio models transcribe a recording to text. Decision models answer your questions about a text with yes or no, one of your options or a score.">
                 <option value="multimodal" selected="true">Multimodal models</option>
                 <option value="text">Text models</option>
                 <option value="image">Image models</option>
+                <option value="audio">Audio models (speech to text)</option>
+                <option value="decision">Decision models (yes/no, choice and score answers)</option>
             </param>
             <when value="multimodal">
                 <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
@@ -84,13 +121,77 @@ python '$__tool_directory__/llm_hub.py'
                 </param>
                 <param name="image_context" type="data" optional="false" format="jpg,png,gif,tiff,bmp" label="Image Context"/>
             </when>
+            <when value="audio">
+                <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
+                    <options from_data_table="genai_models">
+                        <filter type="static_value" column="3" value="audio"/>
+                    </options>
+                    <validator message="No model annotation is available for LLM Hub" type="no_options"/>
+                </param>
+                <param name="audio_context" type="data" optional="false" format="wav,mp3,ogg,flac,m4a" label="Audio" help="The recording to transcribe"/>
+                <param name="language" type="text" optional="true" label="Language" help="The spoken language as a two-letter ISO 639-1 code, e.g. en or de. Leave empty to detect it.">
+                    <validator type="regex" message="Use a two-letter language code, e.g. en">^([a-z]{2})?$</validator>
+                </param>
+                <param name="audio_format" type="select" label="Output" help="Subtitles need a model that returns timestamps, such as Whisper">
+                    <option value="text" selected="true">Plain text</option>
+                    <option value="srt">Subtitles (SRT)</option>
+                    <option value="vtt">Subtitles (WebVTT)</option>
+                </param>
+            </when>
+            <when value="decision">
+                <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
+                    <options from_data_table="genai_models">
+                        <filter type="static_value" column="3" value="decision"/>
+                    </options>
+                    <validator message="No model annotation is available for LLM Hub" type="no_options"/>
+                </param>
+                <param name="text_context" type="data" multiple="true" optional="false" format="html,json,txt" label="Input" help="The text the questions are about, e.g. a record, a report or a log."/>
+                <repeat name="questions" title="Question" min="1">
+                    <param name="name" type="text" label="Name" help="A short key for the answer in the output, e.g. usable. Letters, digits and underscores.">
+                        <validator type="regex" message="Use letters, digits and underscores, starting with a letter">^[A-Za-z][A-Za-z0-9_]*$</validator>
+                    </param>
+                    <param name="instructions" type="text" area="true" label="Question" help="What the model should decide, e.g. Is this sample good enough for sequencing?">
+                        <sanitizer sanitize="false"/>
+                        <validator type="empty_field"/>
+                    </param>
+                    <conditional name="answer">
+                        <param name="type" type="select" label="Answer type">
+                            <option value="noul" selected="true">Yes or no, with its probability</option>
+                            <option value="choice">One of several options</option>
+                            <option value="score">A score from 0 to 1</option>
+                        </param>
+                        <when value="noul"/>
+                        <when value="choice">
+                            <param name="options" type="text" area="true" label="Options" help="One option per line, as label: meaning, e.g. degraded: the RNA is degraded">
+                                <sanitizer sanitize="false"/>
+                                <validator type="empty_field"/>
+                            </param>
+                        </when>
+                        <when value="score">
+                            <param name="low" type="text" label="What 0 means" help="e.g. unusable">
+                                <sanitizer sanitize="false"/>
+                                <validator type="empty_field"/>
+                            </param>
+                            <param name="high" type="text" label="What 1 means" help="e.g. perfect">
+                                <sanitizer sanitize="false"/>
+                                <validator type="empty_field"/>
+                            </param>
+                        </when>
+                    </conditional>
+                </repeat>
+            </when>
         </conditional>
         <section name="advanced" title="Advanced Options" expanded="false">
             <param name="temperature" type="float" optional="true" min="0.0" max="2.0" label="Temperature" help="Controls randomness in the output. Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model's default temperature will be used."/>
         </section>
     </inputs>
     <outputs>
-        <data name="output" format="markdown" label="${tool.name} (${model}) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
+        <data name="output" format="markdown" label="${tool.name} (${model}) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md">
+            <change_format>
+                <when input="model_condition.model_type" value="audio" format="txt"/>
+                <when input="model_condition.model_type" value="decision" format="json"/>
+            </change_format>
+        </data>
     </outputs>
     <tests>
         <test expect_failure="true" expect_exit_code="1">
@@ -106,6 +207,143 @@ python '$__tool_directory__/llm_hub.py'
             <assert_stdout>
                 <has_text text="LiteLLM API key is not configured!"/>
             </assert_stdout>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+                <param name="language" value="de"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="_silence.wav (32044 bytes, language de)."/>
+                    <has_line_matching expression="^Transcript of .*"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="language detected)."/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+                <param name="audio_format" value="srt"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_line line="00:00:00,000 --&gt; 00:00:00,500"/>
+                    <has_line line="Second segment."/>
+                    <has_line line="2"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+                <param name="audio_format" value="vtt"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_line line="WEBVTT"/>
+                    <has_line line="00:00:00.500 --&gt; 00:00:01.000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="decision"/>
+                <param name="model" value="test-decider"/>
+                <param name="text_context" value="rna_qc.txt" ftype="txt"/>
+                <repeat name="questions">
+                    <param name="name" value="usable"/>
+                    <param name="instructions" value="Is this sample's RNA degraded?"/>
+                    <conditional name="answer">
+                        <param name="type" value="noul"/>
+                    </conditional>
+                </repeat>
+                <repeat name="questions">
+                    <param name="name" value="issue"/>
+                    <param name="instructions" value="What is the main problem?"/>
+                    <conditional name="answer">
+                        <param name="type" value="choice"/>
+                        <param name="options" value="degradation: the RNA is degraded&#10;contamination: protein or chemical contamination&#10;none"/>
+                    </conditional>
+                </repeat>
+                <repeat name="questions">
+                    <param name="name" value="quality"/>
+                    <param name="instructions" value="Rate the RNA quality."/>
+                    <conditional name="answer">
+                        <param name="type" value="score"/>
+                        <param name="low" value="unusable"/>
+                        <param name="high" value="perfect"/>
+                    </conditional>
+                </repeat>
+            </conditional>
+            <output name="output" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="noul" value="1.0"/>
+                    <has_json_property_with_value property="choice" value="&quot;degradation&quot;"/>
+                    <has_json_property_with_value property="score" value="0.25"/>
+                    <has_text text="&quot;1&quot;: &quot;perfect&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true">
+            <conditional name="model_condition">
+                <param name="model_type" value="decision"/>
+                <param name="model" value="test-decider"/>
+                <param name="text_context" value="rna_qc.txt" ftype="txt"/>
+                <repeat name="questions">
+                    <param name="name" value="issue"/>
+                    <param name="instructions" value="What is the main problem?"/>
+                    <conditional name="answer">
+                        <param name="type" value="choice"/>
+                        <param name="options" value="degradation"/>
+                    </conditional>
+                </repeat>
+            </conditional>
+            <assert_stderr>
+                <has_text text="needs at least two options"/>
+            </assert_stderr>
+        </test>
+        <test expect_failure="true">
+            <conditional name="model_condition">
+                <param name="model_type" value="decision"/>
+                <param name="model" value="test-not-a-decider"/>
+                <param name="text_context" value="rna_qc.txt" ftype="txt"/>
+                <repeat name="questions">
+                    <param name="name" value="usable"/>
+                    <param name="instructions" value="Is this sample's RNA degraded?"/>
+                </repeat>
+            </conditional>
+            <assert_stderr>
+                <has_text text="does not answer decision questions"/>
+            </assert_stderr>
+        </test>
+        <test expect_failure="true">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber-no-timestamps"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+                <param name="audio_format" value="srt"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="This model does not return timestamps, so it cannot make subtitles."/>
+            </assert_stderr>
         </test>
     </tests>
     <help><![CDATA[
@@ -134,11 +372,13 @@ Available models depend on what's configured in the LiteLLM proxy by your Galaxy
 
    - **Text models**: Upload multiple text files (TXT, HTML, JSON) as context
    - **Image models**: Upload a single image file (JPG, PNG, GIF, TIFF, BMP) as context  
+   - **Audio models (speech to text)**: Upload one recording (WAV, MP3, OGG, FLAC, M4A). The tool returns its transcript as a text file. Optionally give the spoken language as a two-letter code (e.g. en, de); otherwise the model detects it. Which languages work depends on the model. The output can also be SRT or WebVTT subtitles, for models that return timestamps (e.g. Whisper).
    - **Multimodal models**: Upload multiple text files and/or a single image file as context
+   - **Decision models**: Upload the text the questions are about (TXT, HTML, JSON) and add one or more questions. Each answer is a yes or no, one of your options, or a score from 0 to 1, with the model's probabilities. Decision models only answer, they write no text, so they are fast and cheap; use them to check, sort or flag many records, e.g. one run per element of a collection. The output is a JSON file with one entry per question name: ``noul`` is the probability of yes, ``choice`` the chosen option and ``score`` a value from 0 (your first anchor) to 1 (your second), each with the probabilities behind it.
 
    Vision-capable (multimodal and image) models can process image files, but only one image file is supported per request.
 
-3. **Provide a Prompt**: Specify the task or question you want the LLM to address.
+3. **Provide a Prompt** (not for image, audio and decision models): Specify the task or question you want the LLM to address.
 The more specific the prompt, the more tailored the response will be.
 
 **Advanced Options**
