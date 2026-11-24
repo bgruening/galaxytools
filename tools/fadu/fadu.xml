@@ -1,0 +1,241 @@
+<tool id="fadu" name="FADU" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Counting algorithm to quantify prokaryotic RNA-Seq data per GFF3 feature</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="bio_tools"/>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+## Fixed names: FADU derives the index path and output filename from the BAM path.
+ln -s '${bam}' input.bam &&
+ln -s '${bam.metadata.bam_index}' input.bam.bai &&
+mkdir -p fadu_output &&
+fadu
+    -b 'input.bam'
+    -g '${gff3}'
+    -o 'fadu_output'
+    -s '${stranded}'
+    -f '${feature_type}'
+    -a '${attribute_type}'
+    #if $exclude_regions:
+        -x '${exclude_regions}'
+    #end if
+    ${fragment_handling.keep_only_proper_pairs}
+## -m 0 is meaningful (single-read mode); a truthiness check would drop it. Guard on empty/unset only.
+    #if str($fragment_handling.max_fragment_size).strip() not in ('', 'None')
+        -m ${fragment_handling.max_fragment_size}
+    #end if
+    #if str($multimapped.multimapped_selector) == 'remove':
+        -M
+    #else:
+        -e ${multimapped.em_iterations}
+    #end if
+    ${output_options.no_output_header}
+    --log_level '${output_options.log_level}'
+&& mv 'fadu_output/input.counts.txt' '$output_counts'
+    ]]></command>
+    <inputs>
+        <param name="bam" type="data" format="bam" label="Position-sorted alignments" help="Coordinate-sorted BAM file. SAM input is not supported"/>
+        <param name="gff3" type="data" format="gff3" label="Annotation" help="Feature types and attribute keys are matched exactly (case-sensitive)."/>
+        <param name="exclude_regions" type="data" format="bed" optional="true" label="Exclude regions" help="Optional BED file; alignments overlapping these regions are ignored, e.g. to skip rRNA/tRNA contamination."/>
+        <param name="stranded" argument="-s" type="select" label="Strandedness" help="How the read strand relates to the reference strand.">
+            <option value="no" selected="true">no (unstranded)</option>
+            <option value="yes">yes</option>
+            <option value="reverse">reverse</option>
+        </param>
+        <param name="feature_type" argument="-f" type="text" value="gene" label="Feature type" help="Only GFF3 records of this type (column 3) are counted. Case-sensitive, e.g. gene or CDS.">
+            <validator type="regex" message="Feature type must only contain letters, digits, underscores, dots, colons and dashes.">^[\w\.\:\-]+$</validator>
+        </param>
+        <param name="attribute_type" argument="-a" type="text" value="ID" label="Attribute type" help="GFF3 attribute key (column 9) used as the feature identifier. Case-sensitive, e.g. ID or locus_tag.">
+            <validator type="regex" message="Attribute type must only contain letters, digits, underscores, dots, colons and dashes.">^[\w\.\:\-]+$</validator>
+        </param>
+        <section name="fragment_handling" title="Fragment handling" expanded="false">
+            <param name="keep_only_proper_pairs" argument="-p" type="boolean" truevalue="-p" falsevalue="" checked="false" label="Keep only proper pairs" help="Restrict counting to alignments flagged as properly paired. Fragments exceeding the maximum fragment size are discarded when this is set."/>
+            <param name="max_fragment_size" argument="-m" type="integer" optional="true" min="0" label="Maximum fragment size" help="Optional; defaults to 1000 when unset. Set to 0 to process every pair as two single reads. With 'keep only proper pairs' set, fragments exceeding this size are discarded."/>
+        </section>
+        <conditional name="multimapped">
+            <param name="multimapped_selector" type="select" label="Multimapped reads" help="How to treat reads aligning to more than one location (NH &gt; 1).">
+                <option value="em" selected="true">Fractionally assign with EM</option>
+                <option value="remove">Remove</option>
+            </param>
+            <when value="em">
+                <param name="em_iterations" argument="-e" type="integer" value="1" min="1" label="EM iterations" help="Number of Expectation-Maximization iterations used to fractionally assign multimapped fragments."/>
+            </when>
+            <when value="remove"/>
+        </conditional>
+        <section name="output_options" title="Output options" expanded="false">
+            <param argument="--no_output_header" type="boolean" truevalue="--no_output_header" falsevalue="" checked="false" label="Omit header line" help="Write the counts table without the 'featureID uniq_len num_alignments counts tpm' header line."/>
+            <param argument="--log_level" type="select" label="Log level" help="Verbosity of the log messages written to stderr.">
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO" selected="true">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+            </param>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_counts" format="tabular" label="FADU counts on ${on_string}">
+            <actions>
+                <action type="metadata" name="column_names" default="featureID,uniq_len,num_alignments,counts,tpm"/>
+            </actions>
+        </data>
+    </outputs>
+    <tests>
+        <!-- defaults: unstranded, gene features, ID attribute, EM on multimappers -->
+        <test expect_num_outputs="1">
+            <param name="bam" value="tiny.bam" ftype="bam"/>
+            <param name="gff3" value="tiny.gff3" ftype="gff3"/>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_text text="featureID"/>
+                    <has_line_matching expression="gene-H4J01_RS22990\t1590\t2263\.5\t88\.56\t46026\.60"/>
+                    <has_line_matching expression="gene-H4J01_RS23000\t1318\t2273\.0\t70\.56\t44242\.48"/>
+                    <not_has_text text="cds-"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- upstream example invocation, checked against the upstream golden output -->
+        <test expect_num_outputs="1">
+            <param name="bam" value="tiny.bam" ftype="bam"/>
+            <param name="gff3" value="tiny.gff3" ftype="gff3"/>
+            <param name="stranded" value="reverse"/>
+            <param name="feature_type" value="CDS"/>
+            <param name="attribute_type" value="ID"/>
+            <assert_command>
+                <has_text text="-s 'reverse'"/>
+            </assert_command>
+            <output name="output_counts" ftype="tabular" file="expected.counts.txt"/>
+        </test>
+        <!-- -M drops multimapped reads instead of EM-assigning them -->
+        <test expect_num_outputs="1">
+            <param name="bam" value="tiny.bam" ftype="bam"/>
+            <param name="gff3" value="tiny.gff3" ftype="gff3"/>
+            <param name="stranded" value="reverse"/>
+            <param name="feature_type" value="CDS"/>
+            <param name="attribute_type" value="ID"/>
+            <conditional name="multimapped">
+                <param name="multimapped_selector" value="remove"/>
+            </conditional>
+            <assert_command>
+                <has_text text="-M"/>
+            </assert_command>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_line_matching expression="cds-WP_000137653\.1\t1065\t8\.0\t0\.17\t340\.80"/>
+                    <has_line_matching expression="cds-WP_000148526\.1\t1322\t9\.0\t1\.22\t1910\.52"/>
+                    <not_has_text text="gene-H4J01"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- -e sets EM iterations; more iterations shift the EM-assigned counts -->
+        <test expect_num_outputs="1">
+            <param name="bam" value="tiny.bam" ftype="bam"/>
+            <param name="gff3" value="tiny.gff3" ftype="gff3"/>
+            <param name="stranded" value="reverse"/>
+            <param name="feature_type" value="CDS"/>
+            <param name="attribute_type" value="ID"/>
+            <conditional name="multimapped">
+                <param name="multimapped_selector" value="em"/>
+                <param name="em_iterations" value="3"/>
+            </conditional>
+            <assert_command>
+                <has_text text="-e 3"/>
+            </assert_command>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_line_matching expression="cds-WP_000137653\.1\t1065\t8\.5\t0\.18\t338\.53"/>
+                    <has_line_matching expression="cds-WP_000148526\.1\t1322\t9\.5\t1\.22\t1899\.11"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- -x excludes regions; no_output_header drops the header line -->
+        <test expect_num_outputs="1">
+            <param name="bam" value="tiny.bam" ftype="bam"/>
+            <param name="gff3" value="tiny.gff3" ftype="gff3"/>
+            <param name="exclude_regions" value="tiny.exclude.bed" ftype="bed"/>
+            <section name="output_options">
+                <param name="no_output_header" value="true"/>
+            </section>
+            <assert_command>
+                <has_text text="-x "/>
+            </assert_command>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="19"/>
+                    <not_has_text text="featureID"/>
+                    <has_line_matching expression="gene-H4J01_RS22990\t1590\t2263\.5\t88\.57\t46895\.53"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- -p keeps only properly paired fragments, dropping most alignments -->
+        <test expect_num_outputs="1">
+            <param name="bam" value="tiny.bam" ftype="bam"/>
+            <param name="gff3" value="tiny.gff3" ftype="gff3"/>
+            <section name="fragment_handling">
+                <param name="keep_only_proper_pairs" value="true"/>
+            </section>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_line_matching expression="gene-H4J01_RS22990\t1590\t1655\.0\t67\.64\t45465\.57"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- -m 0 processes every pair as two single reads -->
+        <test expect_num_outputs="1">
+            <param name="bam" value="tiny.bam" ftype="bam"/>
+            <param name="gff3" value="tiny.gff3" ftype="gff3"/>
+            <section name="fragment_handling">
+                <param name="max_fragment_size" value="0"/>
+            </section>
+            <assert_command>
+                <has_text text="-m 0"/>
+            </assert_command>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_line_matching expression="gene-H4J01_RS22990\t1590\t2267\.0\t85\.32\t45925\.08"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+# FADU: Feature Aggregate Depth Utility
+
+FADU quantifies gene (or CDS) expression for **prokaryotic RNA-Seq** from a position-sorted BAM and a GFF3 annotation. Because prokaryotic transcripts are frequently polycistronic (operons), fragments often span several neighbouring features; instead of discarding those fragments, FADU assigns each one **fractional counts proportional to the overlap** between the fragment and the non-overlapping portion of each feature. Single-end reads are weighted half of paired fragments to avoid overcounting.
+
+**Inputs:** position-sorted BAM + GFF3 annotation. SAM input and GTF annotations are not supported, and eukaryotic (splice-aware) data is not supported.
+
+Documentation: https://igs.github.io/FADU/
+
+-----
+
+## Output
+
+A tab-delimited table with one row per feature:
+
+- **featureID** — value of the chosen GFF3 attribute (e.g. `ID` or `locus_tag`)
+- **uniq_len** — number of non-overlapping bases of the feature
+- **num_alignments** — number of alignments assigned to the feature
+- **counts** — fractional count assigned to the feature
+- **tpm** — transcripts per million, scaled across all features
+
+For downstream differential expression analysis (e.g. DESeq2), extract the `featureID` and `counts` columns, htseq-count style.
+
+-----
+
+## Options
+
+- **Strandedness** — `no` (unstranded), `yes` (read strand matches the feature strand) or `reverse` (read strand is opposite the feature strand).
+- **Feature type / attribute type** — matched exactly against GFF3 column 3 and the column 9 attribute key, case-sensitive (`gene` and `CDS` are different feature types).
+- **Exclude regions** — alignments overlapping these BED regions are ignored, e.g. to skip rRNA/tRNA contamination.
+- **Fragment handling** — *keep only proper pairs* restricts counting to properly paired alignments; the *maximum fragment size* (default 1000) can be set to 0 to process every pair as two single reads. With the proper-pairs filter set, fragments exceeding the maximum fragment size are discarded.
+- **Multimapped reads** — either removed entirely (reads with `NH` > 1 are dropped), or fractionally assigned with the Expectation-Maximization algorithm using a configurable number of iterations.
+- **Output options** — omit the header line, and choose the log verbosity.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
