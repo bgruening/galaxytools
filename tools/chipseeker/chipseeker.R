@@ -29,11 +29,22 @@ option_list <- list(
     make_option(c("-d", "--downstream"), type = "integer", help = "TSS downstream region"),
     make_option(c("-F", "--flankgeneinfo"), type = "logical", help = "Add flanking gene info"),
     make_option(c("-D", "--flankgenedist"), type = "integer", help = "Flanking gene distance"),
+    make_option(
+        c("-s", "--same_strand"),
+        type = "logical",
+        help = "Find nearest/overlap gene on the same strand"
+    ),
     make_option(c("-j", "--ignore_upstream"), type = "logical", help = "Ignore upstream"),
     make_option(
         c("-k", "--ignore_downstream"),
         type = "logical",
         help = "Ignore downstream"
+    ),
+    make_option(
+        c("-o", "--overlap"),
+        type = "character",
+        default = "TSS",
+        help = "Overlap mode (TSS or all)"
     ),
     make_option(c("-f", "--format"), type = "character", help = "Output format (interval or tabular)."),
     make_option(c("-p", "--plots"), type = "logical", help = "PDF of plots."),
@@ -48,11 +59,18 @@ gtf <- args$gtf
 up <- args$upstream
 down <- args$downstream
 format <- args$format
+overlap <- args$overlap
 
 if (!is.null(args$flankgeneinfo)) {
     flankgeneinfo <- TRUE
 } else {
     flankgeneinfo <- FALSE
+}
+
+if (!is.null(args$same_strand) && isTRUE(args$same_strand)) {
+    same_strand <- TRUE
+} else {
+    same_strand <- FALSE
 }
 
 if (!is.null(args$ignore_upstream)) {
@@ -89,8 +107,10 @@ peak_anno <- annotatePeak(
     tssRegion = c(-up, down),
     addFlankGeneInfo = flankgeneinfo,
     flankDistance = args$flankgenedist,
+    sameStrand = same_strand,
     ignoreUpstream = ignore_upstream,
-    ignoreDownstream = ignore_downstream
+    ignoreDownstream = ignore_downstream,
+    overlap = overlap
 )
 
 # Add gene name
