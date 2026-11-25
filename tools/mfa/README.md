@@ -9,13 +9,13 @@ This suite wraps the core MFA functionality, split into logical categories:
   - `mfa_remap_dictionary` is excluded as I could not perform a functional test using a small sample locally.
 * **Training & Adaptation:** `mfa_train`, `mfa_adapt`, `mfa_train_dictionary`, `mfa_train_g2p`, `mfa_train_lm`, `mfa_train_tokenizer`
   - `mfa_train_ivector` is excluded for now as I could not wrap it properly
-* **Excluded:** `mfa_transcribe`, `mfa_transcribe_whisper` (Whisper is available as a separate Galaxy tool), `mfa_diarize`
+* **Excluded:** `mfa_transcribe`, `mfa_transcribe_whisper` ([Whisper](https://usegalaxy.eu/?tool_id=toolshed.g2.bx.psu.edu/repos/bgruening/whisper/whisper) is available as a separate Galaxy tool), `mfa_diarize`
 
 ### Technical Implementation & Scope
 
-* **Data Tables:** This implementation uses standard 4-column Data Tables (`value`, `dbkey`, `name`, `path`) to manage Pretrained Models (Acoustic, Dictionary, G2P, LM, Tokenizer). *As this is my first implementation of Galaxy Data Tables, I would appreciate a specific review of the `.loc` file generation logic and table configuration.*
+* **Data Tables:** This implementation uses standard 4-column Data Tables (`value`, `dbkey`, `name`, `path`) to manage Pretrained Models (Acoustic, Dictionary, G2P, LM, Tokenizer).
 * **Scope:** This suite covers the most important commands. Some subcommands were omitted either because they strictly require GPU resources (not available on all standard Galaxy nodes) or due to complexity in generating valid unit test data for edge cases.
-* **Domain Context:** Please note that speech processing is different from my background. While the tools pass technical validation and linting, feedback from a domain expert regarding parameter defaults and descriptions would be highly valued. However, this is only possible if we have it on usegalaxy.eu for our specific users to test them.
+* **Domain feedback:** We welcome feedback on parameter defaults and descriptions, especially from people using MFA Tokenize with their own languages and corpora.
 
 ### Instructions for Reviewers & Admins
 
