@@ -362,6 +362,9 @@ def split_by_column(args, in_file, out_dir, top):
 
     # set of file names
     files = set()
+    # cleaned, unique file name for each name produced by the regex: names that
+    # only differ in characters safe_file_name() replaces get _2, _3, ...
+    file_names = {}
 
     # keep track of how many lines have been read
     n_read = 0
@@ -380,7 +383,16 @@ def split_by_column(args, in_file, out_dir, top):
             id_col_val = fields[id_col]
 
             # use regex to get new file name
-            out_file_name = safe_file_name(re.sub(match, sub, id_col_val))
+            raw_name = re.sub(match, sub, id_col_val)
+            if raw_name not in file_names:
+                base, ext = os.path.splitext(safe_file_name(raw_name))
+                name = base + ext
+                n = 1
+                while name in files:
+                    n += 1
+                    name = "%s_%d%s" % (base, n, ext)
+                file_names[raw_name] = name
+            out_file_name = file_names[raw_name]
             out_file_path = os.path.join(out_dir, out_file_name)
 
             # write
