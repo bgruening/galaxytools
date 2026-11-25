@@ -2,6 +2,7 @@
     <description>Utility functions for Flexynesis</description>
     <macros>
         <import>macros.xml</import>
+        <import>element_identifier_macros.xml</import>
     </macros>
     <expand macro="requirements"/>
     <required_files>
@@ -9,16 +10,17 @@
         <include path="flexynesis_utils.py"/>
     </required_files>
     <command detect_errors="exit_code"><![CDATA[
+        @SAFE_ELEMENT_IDENTIFIER@
         @CHECK_NON_COMMERCIAL_USE@
         @TORCH_TMP_DIR@
         mkdir -p inputs/ output/ &&
         #if $utils_conditional.util != "compute_ami_ari" and $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize" and $utils_conditional.util != "recursive_binary_split":
             ## flexynesis coexpression recognizes .tsv instead of .tabular, so we create a symlink with the appropriate extension
-            ln -s '$utils_conditional.X' 'inputs/${utils_conditional.X.element_identifier}.tsv' &&
+            ln -s '$utils_conditional.X' 'inputs/${safe_element_identifier($utils_conditional.X.element_identifier)}.tsv' &&
         #end if
         #if $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize":
             #if $utils_conditional.util != "coexpression":
-                ln -s '$utils_conditional.labels' 'inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext' &&
+                ln -s '$utils_conditional.labels' 'inputs/${safe_element_identifier($utils_conditional.labels.element_identifier)}.${utils_conditional.labels.ext}' &&
             #end if
             cat '$flexynesis_utils_config' &&
             python '$flexynesis_utils_config'
@@ -27,8 +29,9 @@
             ln -s '$utils_conditional.clin' inputs/clin.tabular &&
             #set $omics_names = []
             #for $omics_file in $utils_conditional.omics:
-                ln -s '$omics_file' 'inputs/${omics_file.element_identifier}.${omics_file.ext}' &&
-                #silent $omics_names.append('inputs/' + str($omics_file.element_identifier) + '.' + str($omics_file.ext))
+                #set $omics_path = 'inputs/' + $safe_element_identifier($omics_file.element_identifier) + '.' + str($omics_file.ext)
+                ln -s '$omics_file' '$omics_path' &&
+                #silent $omics_names.append($omics_path)
             #end for
 
             python '$__tool_directory__/flexynesis_utils.py'
@@ -39,10 +42,11 @@
                 --out output
         #end if
         #if $utils_conditional.util == "binarize":
-            ln -s '$utils_conditional.mutation' 'inputs/${utils_conditional.mutation.element_identifier}.${utils_conditional.mutation.ext}' &&
+            #set $mutation_path = 'inputs/' + $safe_element_identifier($utils_conditional.mutation.element_identifier) + '.' + str($utils_conditional.mutation.ext)
+            ln -s '$utils_conditional.mutation' '$mutation_path' &&
             python '$__tool_directory__/flexynesis_utils.py'
                 --util binarize
-                --mutation 'inputs/${utils_conditional.mutation.element_identifier}.${utils_conditional.mutation.ext}'
+                --mutation '$mutation_path'
                 --gene_idx $utils_conditional.gene_idx
                 --sample_idx $utils_conditional.sample_idx
                 --out output
@@ -50,6 +54,15 @@
     ]]></command>
     <configfiles>
         <configfile name="flexynesis_utils_config"><![CDATA[
+#import json
+@SAFE_ELEMENT_IDENTIFIER@
+## input paths as written by the command, as Python string literals
+#if str($utils_conditional.util) in ('louvain_clustering', 'get_optimal_clusters', 'k_means_clustering', 'compute_ami_ari', 'recursive_binary_split')
+#set $labels_path = $json.dumps('inputs/' + $safe_element_identifier($utils_conditional.labels.element_identifier) + '.' + str($utils_conditional.labels.ext))
+#end if
+#if str($utils_conditional.util) in ('louvain_clustering', 'get_optimal_clusters', 'k_means_clustering', 'coexpression')
+#set $X_path = $json.dumps('inputs/' + $safe_element_identifier($utils_conditional.X.element_identifier) + '.tsv')
+#end if
 import sys
 sys.path.append('$__tool_directory__/')
 
@@ -68,8 +81,8 @@ from flexynesis_plot import (
 )
 
 #if $utils_conditional.util == "louvain_clustering":
-label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
-X = load_omics('inputs/${utils_conditional.X.element_identifier}.tsv')
+label_data = load_omics($labels_path)
+X = load_omics($X_path)
 
 cluster_labels, G, partition = louvain_clustering(
                                 #if $utils_conditional.threshold != "":
@@ -86,8 +99,8 @@ output_path = f"output/clustered_labels.tabular"
 label_data.to_csv(output_path, sep="\t", index=True)
 
 #else if $utils_conditional.util == "get_optimal_clusters":
-label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
-X = load_omics('inputs/${utils_conditional.X.element_identifier}.tsv')
+label_data = load_omics($labels_path)
+X = load_omics($X_path)
 
 kmeans_cluster_labels, optimal_k, silhouette_scores = get_optimal_clusters(
                                                         data=X,
@@ -104,8 +117,8 @@ output_path = f"output/optimal_clusters_labels.tabular"
 label_data.to_csv(output_path, sep="\t", index=True)
 
 #else if $utils_conditional.util == "k_means_clustering":
-label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
-X = load_omics('inputs/${utils_conditional.X.element_identifier}.tsv')
+label_data = load_omics($labels_path)
+X = load_omics($X_path)
 
 cluster_labels, kmeans = k_means_clustering(
                             data=X,
@@ -119,7 +132,7 @@ output_path = f"output/kmeans_labels.tabular"
 label_data.to_csv(output_path, sep="\t", index=True)
 
 #else if $utils_conditional.util == "compute_ami_ari":
-label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
+label_data = load_omics($labels_path)
 
 true_label = label_data.columns[$utils_conditional.true_label-2]
 predicted_label = label_data.columns[$utils_conditional.predicted_label-2]
@@ -141,14 +154,14 @@ with open(output_path, 'w') as f:
 from flexynesis.generate_coexpression_network import generate_coexpression_network
 
 generate_coexpression_network(
-    input_file='inputs/${utils_conditional.X.element_identifier}.tsv',
+    input_file=$X_path,
     output_file='output/network.tsv',
     method='$utils_conditional.method',
     min_correlation=$utils_conditional.min_correlation,
     top_k=$utils_conditional.top_k
 )
 #else if $utils_conditional.util == "recursive_binary_split":
-label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
+label_data = load_omics($labels_path)
 
 score_col = label_data.columns[$utils_conditional.score_col-2]
 time_col = label_data.columns[$utils_conditional.time_col-2]
