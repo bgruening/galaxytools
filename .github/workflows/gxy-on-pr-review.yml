@@ -67,7 +67,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install --no-cache-dir gxy-tool-bot==0.2.4
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.5
       # The bot offers its planemo_test / run_in_conda (shell) tools whenever
       # planemo, micromamba or conda is on PATH, and review reads PR content
       # next to secrets — so none of them may be. PR CI already lints and tests.
@@ -86,75 +86,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # A tool dir holds a tool XML. A category folder (tools/image_processing)
-          # holds none, only tool dirs.
-          is_tool() { find "tools/$1" -maxdepth 1 -name '*.xml' ! -name '*macros*.xml' ! -name '*dependencies.xml' ! -name datatypes_conf.xml 2>/dev/null | grep -q .; }
-          # PR title format: "tool_dir: auto-generated tool wrapper (issue #N)"
-          PR_TITLE=$(gh pr view ${{ github.event.pull_request.number }} --json title --jq '.title' 2>/dev/null || echo "")
-          TOOL_DIR=$(echo "$PR_TITLE" | cut -d':' -f1 | xargs)
-          # Fallback: check for .tool-name in the PR branch (find, not a
-          # glob test — a bare tools/*/ glob errors on multiple matches).
-          TOOL_NAME_FILE=$(find tools -maxdepth 2 -name .tool-name 2>/dev/null | head -1)
-          if [ -z "$TOOL_DIR" ] && [ -n "$TOOL_NAME_FILE" ]; then
-            TOOL_DIR=$(head -1 "$TOOL_NAME_FILE" 2>/dev/null)
-          fi
-          # Fallback: derive from the PR's changed files under tools/
-          if [ -z "$TOOL_DIR" ]; then
-            TOOL_DIR=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | grep -oP '^tools/\K[^/]+(/[^/]+)?' | sort -u | head -1)
-            # The second part only counts under a category folder.
-            if is_tool "${TOOL_DIR%%/*}" || [ ! -d "tools/$TOOL_DIR" ]; then TOOL_DIR=${TOOL_DIR%%/*}; fi
-            [ -n "$TOOL_DIR" ] && echo "Derived tool directory from PR diff: $TOOL_DIR"
-          fi
-          # Fallback: find directories with .xml files under tools/
-          if [ -z "$TOOL_DIR" ]; then
-            TOOL_DIR=$(find tools/ -name "*.xml" -not -name "macros.xml" -exec dirname {} \; 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
-          fi
-          # Tools can sit in a category folder (tools/image_processing/imagej2):
-          # look a bare name up there. Only a tool dir under a category folder
-          # counts, not e.g. a tool's own scripts/ folder.
-          if [ -n "$TOOL_DIR" ] && [ ! -d "tools/$TOOL_DIR" ] && [[ "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]]; then
-            MATCH=$(for d in tools/*/"$TOOL_DIR"; do d=${d#tools/}; is_tool "$d" && ! is_tool "${d%%/*}" && echo "$d"; done; true)
-            if [ "$(echo "$MATCH" | grep -c .)" -gt 1 ]; then
-              echo "Tool name $TOOL_DIR is in several category folders, can't tell which:"
-              echo "$MATCH"
-              exit 1
-            fi
-            if [ -n "$MATCH" ]; then
-              TOOL_DIR=$MATCH
-              echo "Found the tool in a category folder: $TOOL_DIR"
-            fi
-          fi
-          # A category folder can hold a tool of its own name (text_processing/text_processing).
-          if [[ -n "$TOOL_DIR" && "$TOOL_DIR" != */* ]] && [ -d "tools/$TOOL_DIR" ] && ! is_tool "$TOOL_DIR" && is_tool "$TOOL_DIR/$TOOL_DIR"; then
-            TOOL_DIR=$TOOL_DIR/$TOOL_DIR
-          fi
-          if [ -z "$TOOL_DIR" ]; then
-            echo "Could not determine tool directory from PR title, .tool-name, or XML files"
-            exit 1
-          fi
-          # TOOL_DIR feeds paths under tools/ later — reject anything that
-          # isn't a plain directory name, or one category folder and a name
-          # (traversal via a retitled PR).
-          # The first character must not be a dot: '.' and '..' would pass
-          # [A-Za-z0-9_.-] but resolve outside tools/. Same for each part.
-          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?$ ]]; then
-            echo "Refusing unsafe tool directory name: $TOOL_DIR"
-            exit 1
-          fi
-          # Only a real tool folder: no symlink, no category folder, and no folder
-          # inside another tool (e.g. music_deconvolution/scripts).
-          if [ -L "tools/${TOOL_DIR%%/*}" ] || [ -L "tools/$TOOL_DIR" ]; then
-            echo "Refusing tools/$TOOL_DIR: it goes through a symlink"
-            exit 1
-          fi
-          if ! is_tool "$TOOL_DIR"; then
-            echo "No tool folder tools/$TOOL_DIR (no tool XML in it)"
-            exit 1
-          fi
-          if [[ "$TOOL_DIR" == */* ]] && is_tool "${TOOL_DIR%%/*}"; then
-            echo "tools/$TOOL_DIR is inside the tool ${TOOL_DIR%%/*}, not a tool of its own"
-            exit 1
-          fi
+          # The tool folder the PR's changed files are in (nested ones too, e.g.
+          # tools/image_processing/imagej2); the title's "name:" prefix picks
+          # one when the PR changes several. Fails with a message otherwise.
+          gh api "repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty) | @json' > "$RUNNER_TEMP/changed-files"
+          PR_TITLE=$(gh pr view ${{ github.event.pull_request.number }} --json title --jq '.title')
+          TOOL_DIR=$(gxy-tool-bot find-tool-dir --changed-files "$RUNNER_TEMP/changed-files" --title="$PR_TITLE")
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
           echo "Found tool directory: $TOOL_DIR"
       - name: Review tool files
