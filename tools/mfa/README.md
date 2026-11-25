@@ -9,7 +9,7 @@ This suite wraps the core MFA functionality, split into logical categories:
   - `mfa_remap_dictionary` is excluded as I could not perform a functional test using a small sample locally.
 * **Training & Adaptation:** `mfa_train`, `mfa_adapt`, `mfa_train_dictionary`, `mfa_train_g2p`, `mfa_train_lm`, `mfa_train_tokenizer`
   - `mfa_train_ivector` is excluded for now as I could not wrap it properly
-* **Excluded:** `mfa_transcribe`, `mfa_transcribe_whisper` ([Whisper]([Whisper](https://usegalaxy.eu/?tool_id=toolshed.g2.bx.psu.edu/repos/bgruening/whisper/whisper)) is available as a separate Galaxy tool), `mfa_diarize`
+* **Excluded:** `mfa_transcribe`, `mfa_transcribe_whisper` ([Whisper](https://usegalaxy.eu/?tool_id=toolshed.g2.bx.psu.edu/repos/bgruening/whisper/whisper) is available as a separate Galaxy tool), `mfa_diarize`
 
 ### Technical Implementation & Scope
 
