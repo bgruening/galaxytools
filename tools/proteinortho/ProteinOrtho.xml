@@ -1,4 +1,4 @@
-<tool id="proteinortho" name="ProteinOrtho" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.01">
+<tool id="proteinortho" name="ProteinOrtho" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.1">
     <description>detects (co-)orthologous genes across species</description>
     <macros>
         <import>macros.xml</import>
@@ -7,6 +7,9 @@
     <expand macro="requirements"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
+#if str($synteny.synteny_select) == '-synteny' and len($fasta_input) != len($synteny.synteny_input):
+echo "Error: The number of FASTA files (${len($fasta_input)}) must match the number of GFF3 files (${len($synteny.synteny_input)})." >&2 && exit 1
+#else:
 ## ProteinOrtho v6 creates its search databases and intermediate files next to the
 ## input FASTA files, therefore the inputs are symlinked into the working directory
 ## using a numbered naming scheme (0.fasta, 1.fasta, ...). The GFF files of the
@@ -46,6 +49,7 @@ proteinortho
     '${i}.fasta'
 #end for
     > '$logfile' 2>&1
+#end if
     ]]></command>
     <inputs>
         <param name="fasta_input" type="data" format="fasta" multiple="true" min="2" label="FASTA files, one per species" help="Two or more FASTA files, each representing the protein (or gene) set of one species. Sequence identifiers must be unique within each file."/>
@@ -65,7 +69,7 @@ proteinortho
             </param>
             <when value=""/>
             <when value="-synteny">
-                <param name="synteny_input" type="data" format="gff" multiple="true" min="2" label="GFF3 annotation files, one per species" help="One GFF3 file for each input FASTA file, given in the same order. Only rows of type CDS (column 3) are considered and column 9 must contain an attribute 'Name=GENE_IDENTIFIER' matching the FASTA identifier (no semicolons)."/>
+                <param name="synteny_input" type="data" format="gff" multiple="true" min="2" label="GFF3 annotation files, one per species" help="One GFF3 file for each input FASTA file, given in the same order. Only rows of type CDS (column 3) are considered, and column 9 must contain a Name=, protein_id=, or ID= attribute whose value matches the FASTA sequence identifier (without spaces or semicolons in the identifier itself)."/>
                 <param name="synteny_dups" type="boolean" checked="false" truevalue="-dups=3" falsevalue="" label="Resolve duplicated regions" help="Enable the reiteration heuristic to determine duplicated regions (recommended when whole genome duplications are suspected)."/>
                 <param argument="-cs" type="integer" value="3" min="1" label="Size of a maximum common substring" help="Minimum size of a shared common substring (MCS) for adjacency matches in the PoFF algorithm (default 3)."/>
             </when>
@@ -99,14 +103,14 @@ proteinortho
         </data>
         <data format="txt" name="graph" from_work_dir="myproject.proteinortho-graph" label="${tool.name} on ${on_string}: relation graph"/>
         <data format="tabular" name="poff" from_work_dir="myproject.poff.tsv" label="${tool.name} on ${on_string}: orthologous groups with synteny">
-            <filter>synteny['synteny_select']</filter>
+            <filter>synteny['synteny_select'] == '-synteny'</filter>
             <actions>
                 <action name="column_names" type="metadata" default="# Species,Genes,Alg.-Conn.,${','.join([str(i) + '.fasta' for i in range(len($fasta_input))])}"/>
                 <action name="column_types" type="metadata" default="int,int,float,${','.join(['str' for i in range(len($fasta_input))])}"/>
             </actions>
         </data>
         <data format="txt" name="poff_graph" from_work_dir="myproject.poff-graph" label="${tool.name} on ${on_string}: PoFF relation graph">
-            <filter>synteny['synteny_select']</filter>
+            <filter>synteny['synteny_select'] == '-synteny'</filter>
         </data>
         <data format="txt" name="logfile" label="${tool.name} on ${on_string}: log"/>
     </outputs>
@@ -151,6 +155,9 @@ proteinortho
             <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" ftype="fasta"/>
             <param name="evalue_cutoff" value="1e-05"/>
             <param name="compute_singles" value="true"/>
+            <assert_command>
+                <has_text text="-singles"/>
+            </assert_command>
             <output name="outfile" ftype="tabular">
                 <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
                 <assert_contents>
@@ -173,14 +180,21 @@ proteinortho
                 </assert_contents>
             </output>
         </test>
-        <!-- PoFF synteny extension -->
+        <!-- PoFF synteny extension with duplicated region resolution and custom MCS -->
         <test expect_num_outputs="5">
             <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" ftype="fasta"/>
             <param name="evalue_cutoff" value="1e-05"/>
             <conditional name="synteny">
                 <param name="synteny_select" value="-synteny"/>
                 <param name="synteny_input" value="C.gff,E.gff,L.gff,M.gff" ftype="gff"/>
+                <param name="synteny_dups" value="true"/>
+                <param name="cs" value="4"/>
             </conditional>
+            <assert_command>
+                <has_text text="-synteny"/>
+                <has_text text="-dups=3"/>
+                <has_text text="-cs=4"/>
+            </assert_command>
             <output name="outfile" ftype="tabular">
                 <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
                 <assert_contents>
@@ -194,6 +208,7 @@ proteinortho
                 <assert_contents>
                     <has_text text="Species"/>
                     <has_n_columns n="7"/>
+                    <has_n_lines n="40" delta="2"/>
                     <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_10&#9;E_10&#9;L_10&#9;M_10$"/>
                 </assert_contents>
             </output>
@@ -227,11 +242,19 @@ proteinortho
                 <param name="minspecies" value="1"/>
                 <param name="core" value="false"/>
             </conditional>
+            <assert_command>
+                <has_text text="-identity=30"/>
+                <has_text text="-cov=60"/>
+                <has_text text="-conn=0.2"/>
+                <has_text text="-sim=0.9"/>
+                <has_text text="-minspecies=1"/>
+            </assert_command>
             <output name="outfile" ftype="tabular">
                 <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
                 <assert_contents>
                     <has_text text="Species"/>
                     <has_n_columns n="7"/>
+                    <has_n_lines n="37" delta="2"/>
                     <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_10&#9;E_10&#9;L_10&#9;M_10$"/>
                 </assert_contents>
             </output>
@@ -251,12 +274,49 @@ proteinortho
             <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" ftype="fasta"/>
             <param name="evalue_cutoff" value="1e-05"/>
             <param name="blast_type" value="diamond"/>
+            <assert_command>
+                <has_text text="-p=diamond"/>
+            </assert_command>
             <output name="outfile" ftype="tabular">
                 <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
                 <assert_contents>
                     <has_text text="Species"/>
                     <has_n_columns n="7"/>
+                    <has_n_lines n="38" delta="2"/>
                     <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_10&#9;E_10&#9;L_10&#9;M_10$"/>
+                </assert_contents>
+            </output>
+            <output name="graph" ftype="txt">
+                <assert_contents>
+                    <has_text text="C_10"/>
+                </assert_contents>
+            </output>
+            <output name="logfile" ftype="txt">
+                <assert_contents>
+                    <has_text text="with PoFF version @TOOL_VERSION@"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Self-BLAST and core genes only -->
+        <test expect_num_outputs="3">
+            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" ftype="fasta"/>
+            <param name="evalue_cutoff" value="1e-05"/>
+            <param name="compute_selfblast" value="true"/>
+            <conditional name="advanced">
+                <param name="advanced_select" value="advanced"/>
+                <param name="core" value="true"/>
+            </conditional>
+            <assert_command>
+                <has_text text="-selfblast"/>
+                <has_text text="-core"/>
+            </assert_command>
+            <output name="outfile" ftype="tabular">
+                <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
+                <assert_contents>
+                    <has_text text="Species"/>
+                    <has_n_columns n="7"/>
+                    <has_n_lines n="184" delta="5"/>
+                    <has_line_matching expression="^4&#9;6&#9;0\.333&#9;C_166,C_2,C_164&#9;E_2&#9;L_2&#9;M_2$"/>
                 </assert_contents>
             </output>
             <output name="graph" ftype="txt">
@@ -294,7 +354,7 @@ identifiers must be unique within each file.
 Output
 ------
 
-**Orthologous groups** (`myproject.proteinortho.tsv`)
+**Orthologous groups** (output dataset: *orthologous groups*)
 
 A tabular file with one row per orthologous group:
 
@@ -303,28 +363,34 @@ A tabular file with one row per orthologous group:
 - Column 3: algebraic connectivity of the group. The group is split when the
   connectivity falls below the given threshold (`-conn`, default 0.1). A value
   of 1 means the group is fully connected.
-- One column per input species with the identifiers of the genes of the group.
-  Species that are absent from a group are marked with `*`. Multiple genes of
-  one species within a group (co-orthologs / paralogs) are separated by commas.
+- Columns 4+: one column per input species, named `0.fasta`, `1.fasta`, ... in
+  the order of the provided FASTA inputs, listing the identifiers of the genes
+  in the group. Species that are absent from a group are marked with `*`.
+  Multiple genes of one species within a group (co-orthologs / paralogs) are
+  separated by commas.
 
-**Relation graph** (`myproject.proteinortho-graph`)
+**Relation graph** (output dataset: *relation graph*)
 
 A pairwise list of the relations between all genes of the input files
 (`geneA geneB evalue_ab bitscore_ab evalue_ba bitscore_ba`).
 
-With the synteny extension the additional files `myproject.poff.tsv` and
-`myproject.poff-graph` are generated, in which the adjacency information is
-combined with the sequence similarity.
+With the synteny extension enabled, two additional datasets are produced:
+**orthologous groups with synteny** and **PoFF relation graph**, in which gene
+adjacency information is combined with sequence similarity.
+
+**Log** (output dataset: *log*)
+
+Standard output and error log produced by ProteinOrtho.
 
 ------
 Synteny
 ------
 
-The PoFF extension requires a GFF3 annotation file for each input FASTA file
-(in the same order). Only rows of type `CDS` (column 3) are considered.
-Column 9 must contain the attribute `Name=GENE_IDENTIFIER`, where the gene
-identifier must match the identifier used in the FASTA file. Semicolons must
-not be used in the attributes.
+The PoFF extension requires one GFF3 annotation file for each input FASTA file,
+provided in the same order. Only rows of type `CDS` (column 3) are considered.
+Column 9 must contain a `Name=`, `protein_id=`, or `ID=` attribute whose value
+matches the corresponding sequence identifier in the FASTA file (without spaces
+or semicolons inside the identifier itself).
 
 -----
 Options
