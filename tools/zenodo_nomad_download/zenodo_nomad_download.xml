@@ -31,6 +31,10 @@
         #end if
         ## Same text as LLM_FAILED_ANSWER in nexus_eln_llm_merge.py.
         && echo 'LLM job failed: no answer.' > '$no_answer'
+        ## Read as "no header" by nexus_eln (empty `text`, as spm_raw_header writes).
+        && echo '{"file": null, "read_with": "no header; the header job failed", "text": ""}' > '$no_header'
+        ## An ELN without a definition: the converter then reports the file as failed.
+        && echo '{}' > '$no_eln'
     ]]></command>
     <inputs>
         <param name="work_list" type="data" format="json" label="Work list (work_list.json)" help="Written by the NOMAD side: the records and files to download, the limits and the extension lists."/>
@@ -43,6 +47,9 @@
         <data name="manifest" format="json" label="${tool.name} on ${on_string}: Manifest"/>
         <!-- The workflow puts this answer in place of a failed LLM Hub job, so the run goes on. -->
         <data name="no_answer" format="markdown" label="${tool.name} on ${on_string}: LLM failed answer"/>
+        <!-- The workflow puts these in place of a failed header or ELN builder job. -->
+        <data name="no_header" format="json" label="${tool.name} on ${on_string}: No header"/>
+        <data name="no_eln" format="yaml" label="${tool.name} on ${on_string}: No ELN"/>
         <collection name="raw_files" type="list" label="${tool.name} on ${on_string}: Raw files">
             <discover_datasets pattern="__designation__" directory="raw_files" format="binary" sort_by="filename"/>
         </collection>
@@ -55,7 +62,7 @@
     </outputs>
     <tests>
         <!-- Test 01: archive with raw, context, junk and known files; unsafe, too large and mismatching files. -->
-        <test expect_num_outputs="5">
+        <test expect_num_outputs="7">
             <param name="work_list" value="work_list.json" ftype="json"/>
             <param name="prefetched">
                 <collection type="list">
@@ -87,6 +94,16 @@
                     <has_text text="LLM job failed: no answer."/>
                 </assert_contents>
             </output>
+            <output name="no_header" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="text" value="&quot;&quot;"/>
+                </assert_contents>
+            </output>
+            <output name="no_eln" ftype="yaml">
+                <assert_contents>
+                    <has_line line="{}"/>
+                </assert_contents>
+            </output>
             <!-- Elements are sorted by file name. -->
             <output_collection name="raw_files" type="list" count="3">
                 <element name="17533355-0d16b332fc2e-loose_raw.sxm" file="loose_raw.sxm" ftype="binary"/>
@@ -115,7 +132,7 @@
             <output_collection name="context_files" type="list" count="5"/>
         </test>
         <!-- Test 02: the zip's index is above the uncompressed limit, so nothing is extracted. -->
-        <test expect_num_outputs="5">
+        <test expect_num_outputs="7">
             <param name="work_list" value="work_list_uncompressed_limit.json" ftype="json"/>
             <param name="prefetched">
                 <collection type="list">
@@ -132,7 +149,7 @@
             <output_collection name="raw_files" type="list" count="0"/>
         </test>
         <!-- Test 03: a work list without records gives an empty manifest and empty collections. -->
-        <test expect_num_outputs="5">
+        <test expect_num_outputs="7">
             <param name="work_list" value="work_list_empty.json" ftype="json"/>
             <output name="manifest" ftype="json">
                 <assert_contents>
@@ -145,7 +162,7 @@
         </test>
         <!-- Test 04: context files keep a fixed type, also when Galaxy cannot detect it (binary
              bytes in a .csv). A detected type "auto" would stop the report step from scheduling. -->
-        <test expect_num_outputs="5">
+        <test expect_num_outputs="7">
             <param name="work_list" value="work_list_loose.json" ftype="json"/>
             <param name="prefetched">
                 <collection type="list">
@@ -169,7 +186,7 @@
         <!-- Test 05: PDF text goes into the bundle as pdf_text. A broken PDF and a PDF without a
              text layer are only reported in the bundle; their files are still kept. context_sm_page2.pdf: page 2 of the Supplementary
              Material of Zenodo record 17202182 (CC-BY-4.0). -->
-        <test expect_num_outputs="5">
+        <test expect_num_outputs="7">
             <param name="work_list" value="work_list_pdf.json" ftype="json"/>
             <param name="prefetched">
                 <collection type="list">
@@ -244,6 +261,8 @@ list's limit ("zip bomb"). Archives inside an archive are not extracted.
   [pdftotext](https://poppler.freedesktop.org/) into `pdf_text`; a PDF without text (broken,
   scanned, too large) gets the reason in `pdf_text_error` and the run goes on.
 - **Context files**: the record's context files, for the NOMAD project.
+- **LLM failed answer**, **No header**, **No ELN**: fixed files that a workflow can put in place
+  of a failed LLM Hub, header or ELN builder job, so the run goes on.
 
 Element identifiers are `<record ID>-<first 12 characters of the SHA-256>-<file name>`.
     ]]></help>
