@@ -9,7 +9,6 @@
         <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
     </creator>
     <requirements>
-        <container type="singularity">oras://ghcr.io/3dtrees-earth/3dtrees_csp_standsegmentation:@TOOL_VERSION@-sif</container>
         <container type="docker">ghcr.io/3dtrees-earth/3dtrees_csp_standsegmentation:@TOOL_VERSION@</container>
     </requirements>
     <version_command>Rscript /opt/CspStandSegmentation/exec/run.R --version</version_command>
@@ -79,6 +78,7 @@
             --metrics-grid '$advanced.metrics_grid'
             --geometry-k '$advanced.geometry_k'
             --random-seed '$advanced.random_seed'
+            --dtm-lookup '$advanced.dtm_lookup'
             $advanced.dbh_evidence
             --dtm-workers "\${GALAXY_SLOTS:-4}"
             --inventory-workers "\$(( \${GALAXY_SLOTS:-4} < 16 ? \${GALAXY_SLOTS:-4} : 16 ))"
@@ -177,7 +177,7 @@
                 <param argument="--species-lookup" type="data" format="tabular" label="Species lookup" help="Tab-separated with segmentation_source, species_id, scientific_name, taxonomy_version and model_version (common_name optional)."/>
             </when>
         </conditional>
-        <section name="advanced" title="Advanced parameters" expanded="false" help="Defaults are the upstream CspStandSegmentation settings.">
+        <section name="advanced" title="Advanced parameters" expanded="false" help="Stem slice and DBH fit defaults are the upstream CspStandSegmentation settings.">
             <param argument="--slice-min" type="float" min="0" max="1.2" value="0.3" label="Stem slices from (m above ground)"/>
             <param argument="--slice-max" type="float" min="1.4" max="10" value="4" label="Stem slices up to (m above ground)"/>
             <param argument="--slice-increment" type="float" min="0.2" max="1" value="0.2" label="Slice step (m)"/>
@@ -187,6 +187,10 @@
             <param argument="--metrics-grid" type="float" min="0" max="1" value="0.01" label="Measurement grid (m)" help="DBH, height, crown and position use one point per tree and grid cell; point count, species and FM fields use every point. 0 measures every point."/>
             <param argument="--geometry-k" type="integer" min="3" max="1000" value="10" label="Neighbours for stem geometry" help="Neighbours per point for planarity and verticality."/>
             <param argument="--random-seed" type="integer" min="0" max="2147483647" value="42" label="Random seed"/>
+            <param argument="--dtm-lookup" type="select" label="Terrain lookup" help="How each point's ground height is read from the DTM: interpolated between the four surrounding cell centres, or the value of the cell the point falls in.">
+                <option value="bilinear" selected="true">Bilinear interpolation</option>
+                <option value="nearest">Containing cell</option>
+            </param>
             <param argument="--dbh-evidence" type="boolean" truevalue="--dbh-evidence true" falsevalue="--dbh-evidence false" checked="true" label="DBH evidence" help="Fill the dbh_fits, dbh_slices and crown_hull columns."/>
         </section>
     </inputs>
@@ -275,12 +279,15 @@
                 <param name="restrict" value="yes"/>
                 <param name="aoi" value="forest_plot_aoi.geojson" ftype="geojson"/>
             </conditional>
+            <section name="advanced">
+                <param name="dtm_lookup" value="nearest"/>
+            </section>
             <output name="inventory" ftype="csv">
                 <assert_contents>
                     <has_n_lines n="3"/>
                     <has_n_columns n="22" sep=","/>
-                    <has_line_matching expression="SAT,PredInstance_SAT,1,-43\.838\d*,-60\.928\d*,4\.732\d*,,37\.571,101\.798\d*,14504,14504,2,dbh_unavailable,5,0,,798,.*"/>
-                    <has_line_matching expression="ULS,PredInstance_ULS,21,-42\.786\d*,-65\.060\d*,5\.149\d*,,37\.571,101\.491\d*,14503,14503,3,dbh_unavailable,5,0,,625,.*"/>
+                    <has_line_matching expression="SAT,PredInstance_SAT,1,-43\.839\d*,-60\.946\d*,4\.738\d*,,37\.67,101\.798\d*,14504,14504,2,dbh_unavailable,5,0,,796,.*"/>
+                    <has_line_matching expression="ULS,PredInstance_ULS,21,-42\.775\d*,-65\.084\d*,5\.159\d*,,37\.67,101\.491\d*,14503,14503,3,dbh_unavailable,5,0,,625,.*"/>
                 </assert_contents>
             </output>
             <output name="inventory_parquet" ftype="parquet">
@@ -292,8 +299,8 @@
                 <assert_contents>
                     <has_n_lines n="3"/>
                     <has_n_columns n="22" sep=","/>
-                    <has_line_matching expression="SAT,PredInstance_SAT,aoi,120\.08,1,0,0,83\.277\d*,,,,,,,,37\.571,37\.571,37\.571,37\.571,37\.571,37\.571,EPSG:32632"/>
-                    <has_line_matching expression="ULS,PredInstance_ULS,aoi,120\.08,1,0,0,83\.277\d*,,,,,,,,37\.571,37\.571,37\.571,37\.571,37\.571,37\.571,EPSG:32632"/>
+                    <has_line_matching expression="SAT,PredInstance_SAT,aoi,120\.08,1,0,0,83\.277\d*,,,,,,,,37\.67,37\.67,37\.67,37\.67,37\.67,37\.67,EPSG:32632"/>
+                    <has_line_matching expression="ULS,PredInstance_ULS,aoi,120\.08,1,0,0,83\.277\d*,,,,,,,,37\.67,37\.67,37\.67,37\.67,37\.67,37\.67,EPSG:32632"/>
                 </assert_contents>
             </output>
             <output name="dtm_full" ftype="tiff">
@@ -454,8 +461,8 @@ described in the [tool README](https://github.com/3dTrees-earth/3dtrees_CSP_Stan
 - **Terrain model**: generated (existing ground class, else cloth simulation)
   or a supplied GeoTIFF covering the cloud.
 - **Area of interest** and **Species names** are optional.
-- **Advanced parameters**: the stem slices, the DBH fit and the measurement
-  grid. DBH, height, crown and position are measured on one point per tree
+- **Advanced parameters**: the stem slices, the DBH fit, the measurement
+  grid and the terrain lookup (bilinear by default). DBH, height, crown and position are measured on one point per tree
   and 1 cm cell; point counts and species use every point.
 
 CPU and memory come from the Galaxy job allocation.
