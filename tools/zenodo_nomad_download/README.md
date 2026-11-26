@@ -14,6 +14,7 @@ A file that cannot be handled is recorded in the manifest with its reason; the j
   `download`). Optional: files already in Galaxy.
 - Out: `manifest.json` (`schema_version`, `run_id`, `tool_version`, `archives`, `files`,
   `download_failures`), the raw files, one context bundle (JSON) per raw file, and the context files.
+  Also `no_answer`: a fixed answer that the workflow uses in place of a failed LLM Hub job.
   Raw files and bundles share element identifiers (`<record id>-<sha256 prefix>-<file name>`).
 
 ## Tests
