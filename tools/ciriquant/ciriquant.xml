@@ -1,0 +1,395 @@
+<tool id="ciriquant_ciriquant" name="CIRIquant" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>circRNA detection and quantification from paired-end RNA-Seq data</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+@APPLY_PY3_PATCH@
+mkdir -p @OUTDIR@/align @OUTDIR@/gene @OUTDIR@/circ &&
+
+## The reference (and its BWA / HISAT2 indices) is always taken from the history and
+## indexed on the fly: a cached reference would require matching HISAT2 *and* BWA
+## index data tables for the same dbkey.
+ln -s '${reference_source.fasta}' ref.fa &&
+samtools faidx ref.fa &&
+bwa index -p bwa_idx ref.fa 2> bwa_index.log &&
+hisat2-build -q -p \${GALAXY_SLOTS:-4} ref.fa hisat_idx &&
+ln -s '${annotation}' annotation.gtf &&
+
+## Give the read symlinks explicit extensions so that gzipped input is recognized
+#if $reads_r1.is_of_type('fastq.gz'):
+    #set $fq1 = 'reads_r1.fq.gz'
+    #set $fq2 = 'reads_r2.fq.gz'
+#else:
+    #set $fq1 = 'reads_r1.fq'
+    #set $fq2 = 'reads_r2.fq'
+#end if
+ln -s '${reads_r1}' $fq1 &&
+ln -s '${reads_r2}' $fq2 &&
+
+CIRIquant
+@THREADS@
+-1 '$fq1'
+-2 '$fq2'
+--config '$config_file'
+-o @OUTDIR@
+-p sample
+-a '${sec_advanced.anchor}'
+-l '${sec_advanced.library_type}'
+#if $sec_advanced.no_gene:
+    --no-gene
+#end if
+#if $sec_advanced.no_fsj:
+    --no-fsj
+#end if
+#if $sec_advanced.bsj_reads_out:
+    --bsj-file '$bsj_reads'
+#end if
+#if str($circ_input.circ_input_selector) == "bed":
+    --bed '${circ_input.bed}'
+#elif str($circ_input.circ_input_selector) == "circ_tool":
+    --circ '${circ_input.circ}' --tool '${circ_input.tool}'
+#end if
+#if $rnaser_gtf:
+    --RNaseR '${rnaser_gtf}'
+#end if
+
+## Collect the outputs
+&& mv @OUTDIR@/sample.gtf '$output_gtf'
+#if str($circ_input.circ_input_selector) != "bed":
+    && mv @OUTDIR@/sample.bed '$output_bed'
+#end if
+&& mv @OUTDIR@/align/sample.sorted.bam '$output_bam'
+#if not $sec_advanced.no_gene:
+    && mv @OUTDIR@/gene/sample_out.gtf '$gene_gtf'
+#end if
+&& mv @OUTDIR@/sample.log '$log'
+    ]]></command>
+    <configfiles>
+        <configfile name="config_file">
+## Tool binaries are resolved from PATH inside the conda environment.
+reference:
+  fasta: ref.fa
+  gtf: annotation.gtf
+  bwa_index: bwa_idx
+  hisat_index: hisat_idx
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="reads_r1" argument="-1" type="data" format="fastq,fastq.gz" label="Forward reads (R1)" help="Paired-end RNA-Seq data only; gzip compression supported"/>
+        <param name="reads_r2" argument="-2" type="data" format="fastq,fastq.gz" label="Reverse reads (R2)" help="Mate file corresponding to the forward reads"/>
+        <conditional name="reference_source">
+            <param name="reference_source_selector" type="select" label="Reference genome source">
+                <option value="history" selected="true">Use a genome from the history</option>
+            </param>
+            <when value="history">
+                <param name="fasta" type="data" format="fasta" label="Reference genome FASTA" help="The .fai, BWA and HISAT2 indices are built on the fly"/>
+            </when>
+        </conditional>
+        <param name="annotation" type="data" format="gtf,gff3" label="Gene annotation" help="GTF or GFF3 annotation of the host genome"/>
+        <conditional name="circ_input">
+            <param name="circ_input_selector" type="select" label="circRNA candidates to quantify">
+                <option value="denovo" selected="true">Detect circRNAs de novo with CIRI2 (default)</option>
+                <option value="bed">Quantify circRNAs from a BED file</option>
+                <option value="circ_tool">Quantify circRNAs predicted by another tool</option>
+            </param>
+            <when value="denovo"/>
+            <when value="bed">
+                <param name="bed" type="data" format="bed" label="Putative circRNAs (BED)" help="Column 4 must hold the circRNA identifier in ``chrom:start|end`` notation"/>
+            </when>
+            <when value="circ_tool">
+                <param name="circ" type="data" format="txt,tabular" label="circRNA predictions" help="Raw output of the selected prediction tool"/>
+                <param name="tool" type="select" label="Prediction tool">
+                    <option value="CIRI2">CIRI2</option>
+                    <option value="CIRCexplorer2">CIRCexplorer2</option>
+                    <option value="DCC">DCC</option>
+                    <option value="KNIFE">KNIFE</option>
+                    <option value="MapSplice">MapSplice</option>
+                    <option value="UROBORUS">UROBORUS</option>
+                    <option value="circRNA_finder">circRNA_finder</option>
+                    <option value="find_circ">find_circ</option>
+                </param>
+            </when>
+        </conditional>
+        <param name="rnaser_gtf" argument="--RNaseR" type="data" format="gtf" optional="true" label="CIRIquant GTF of the RNase R treated sample" help="Second pass of the two-step RNase R correction workflow: adds ``rnaser_bsj``/``rnaser_fsj`` attributes and RNase R treatment statistics to the output header"/>
+        <section name="sec_advanced" title="Advanced options" expanded="false">
+            <param name="anchor" argument="-a" type="integer" value="5" min="1" label="Minimum anchor length for junction alignment"/>
+            <param name="library_type" argument="-l" type="select" value="0" label="Library type">
+                <option value="0" selected="true">Unstranded</option>
+                <option value="1">Stranded, read1 sense (ScriptSeq)</option>
+                <option value="2">Stranded, read1 antisense (TAKARA SMARTer)</option>
+            </param>
+            <param name="no_gene" type="boolean" truevalue="--no-gene" falsevalue="" checked="false" label="Skip StringTie host gene abundance estimation" help="Also disables RNase R correction and all downstream differential expression analyses"/>
+            <param name="no_fsj" type="boolean" truevalue="--no-fsj" falsevalue="" checked="false" label="Skip forward splice junction (FSJ) extraction"/>
+            <param name="bsj_reads_out" type="boolean" truevalue="--bsj-file" falsevalue="" checked="false" label="Write the IDs of BSJ supporting reads to a file"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_gtf" format="gtf" label="${tool.name} circRNAs on ${on_string}"/>
+        <data name="output_bed" format="bed" label="${tool.name} circRNA BED on ${on_string}">
+            <!-- CIRIquant does not write a BED file when the circRNAs were supplied as one -->
+            <filter>circ_input['circ_input_selector'] != 'bed'</filter>
+        </data>
+        <data name="output_bam" format="bam" label="${tool.name} alignment on ${on_string}"/>
+        <data name="gene_gtf" format="gtf" label="${tool.name} host gene abundance on ${on_string}">
+            <filter>sec_advanced['no_gene'] is False</filter>
+        </data>
+        <data name="bsj_reads" format="txt" label="${tool.name} BSJ read IDs on ${on_string}">
+            <filter>sec_advanced['bsj_reads_out'] is True</filter>
+        </data>
+        <data name="log" format="txt" label="${tool.name} log on ${on_string}"/>
+    </outputs>
+    <tests>
+        <!-- De novo detection, host gene abundance skipped (as in the official
+             CIRIquant test procedure) -->
+        <test expect_num_outputs="4">
+            <param name="reads_r1" value="r1.fq.gz" ftype="fastq.gz"/>
+            <param name="reads_r2" value="r2.fq.gz" ftype="fastq.gz"/>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="history"/>
+                <param name="fasta" value="ref.fa" ftype="fasta"/>
+            </conditional>
+            <param name="annotation" value="anno.gtf" ftype="gtf"/>
+            <section name="sec_advanced">
+                <param name="no_gene" value="true"/>
+            </section>
+            <output name="output_gtf" ftype="gtf">
+                <assert_contents>
+                    <has_text text="##Sample: sample"/>
+                    <has_text text="circRNA"/>
+                    <has_text text="circ_id &quot;chrT:1000|5500&quot;"/>
+                    <has_text text="junc_ratio"/>
+                    <has_text text="gene_id &quot;gene1&quot;"/>
+                </assert_contents>
+            </output>
+            <output name="output_bed" ftype="bed">
+                <assert_contents>
+                    <has_text text="chrT:1000|5500"/>
+                </assert_contents>
+            </output>
+            <output name="output_bam" ftype="bam"/>
+            <output name="log" ftype="txt">
+                <assert_contents>
+                    <has_text text="[INFO"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--no-gene"/>
+                <has_text text="--config"/>
+                <has_text text="-l '0'"/>
+                <has_text text="-a '5'"/>
+                <not_has_text text="--RNaseR"/>
+            </assert_command>
+        </test>
+        <!-- De novo detection including StringTie host gene abundance -->
+        <test expect_num_outputs="5">
+            <param name="reads_r1" value="r1.fq.gz" ftype="fastq.gz"/>
+            <param name="reads_r2" value="r2.fq.gz" ftype="fastq.gz"/>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="history"/>
+                <param name="fasta" value="ref.fa" ftype="fasta"/>
+            </conditional>
+            <param name="annotation" value="anno.gtf" ftype="gtf"/>
+            <output name="output_gtf" ftype="gtf">
+                <assert_contents>
+                    <has_text text="circRNA"/>
+                    <has_text text="gene_id &quot;gene1&quot;"/>
+                </assert_contents>
+            </output>
+            <output name="gene_gtf" ftype="gtf">
+                <assert_contents>
+                    <has_text text="gene1"/>
+                    <has_text text="TPM"/>
+                </assert_contents>
+            </output>
+            <output name="output_bed" ftype="bed">
+                <assert_contents>
+                    <has_text text="chrT:1000|5500"/>
+                </assert_contents>
+            </output>
+            <output name="output_bam" ftype="bam"/>
+            <output name="log" ftype="txt">
+                <assert_contents>
+                    <has_text text="[INFO"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <not_has_text text="--no-gene"/>
+            </assert_command>
+        </test>
+        <!-- circRNAs supplied as a BED file: no BED is written by CIRIquant in this mode -->
+        <test expect_num_outputs="3">
+            <param name="reads_r1" value="r1.fq.gz" ftype="fastq.gz"/>
+            <param name="reads_r2" value="r2.fq.gz" ftype="fastq.gz"/>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="history"/>
+                <param name="fasta" value="ref.fa" ftype="fasta"/>
+            </conditional>
+            <param name="annotation" value="anno.gtf" ftype="gtf"/>
+            <conditional name="circ_input">
+                <param name="circ_input_selector" value="bed"/>
+                <param name="bed" value="circs.bed" ftype="bed"/>
+            </conditional>
+            <section name="sec_advanced">
+                <param name="no_gene" value="true"/>
+            </section>
+            <output name="output_gtf" ftype="gtf">
+                <assert_contents>
+                    <has_text text="circRNA"/>
+                    <has_text text="chrT:1000|5500"/>
+                </assert_contents>
+            </output>
+            <output name="output_bam" ftype="bam"/>
+            <output name="log" ftype="txt">
+                <assert_contents>
+                    <has_text text="[INFO"/>
+                    <has_text text="Using user-provided circRNA bed file"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--bed"/>
+                <not_has_text text="--no-fsj"/>
+            </assert_command>
+        </test>
+        <!-- circRNAs supplied as the output of another tool (CIRI2) -->
+        <test expect_num_outputs="4">
+            <param name="reads_r1" value="r1.fq.gz" ftype="fastq.gz"/>
+            <param name="reads_r2" value="r2.fq.gz" ftype="fastq.gz"/>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="history"/>
+                <param name="fasta" value="ref.fa" ftype="fasta"/>
+            </conditional>
+            <param name="annotation" value="anno.gtf" ftype="gtf"/>
+            <conditional name="circ_input">
+                <param name="circ_input_selector" value="circ_tool"/>
+                <param name="circ" value="predictions.ciri" ftype="txt"/>
+                <param name="tool" value="CIRI2"/>
+            </conditional>
+            <section name="sec_advanced">
+                <param name="no_gene" value="true"/>
+            </section>
+            <output name="output_gtf" ftype="gtf">
+                <assert_contents>
+                    <has_text text="circRNA"/>
+                    <has_text text="chrT:1000|5500"/>
+                </assert_contents>
+            </output>
+            <output name="output_bed" ftype="bed">
+                <assert_contents>
+                    <has_text text="chrT:1000|5500"/>
+                </assert_contents>
+            </output>
+            <output name="output_bam" ftype="bam"/>
+            <output name="log" ftype="txt">
+                <assert_contents>
+                    <has_text text="[INFO"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--circ"/>
+                <has_text text="--tool 'CIRI2'"/>
+            </assert_command>
+        </test>
+        <!-- RNase R corrected second pass, stranded library and BSJ read IDs -->
+        <test expect_num_outputs="5">
+            <param name="reads_r1" value="r1.fq.gz" ftype="fastq.gz"/>
+            <param name="reads_r2" value="r2.fq.gz" ftype="fastq.gz"/>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="history"/>
+                <param name="fasta" value="ref.fa" ftype="fasta"/>
+            </conditional>
+            <param name="annotation" value="anno.gtf" ftype="gtf"/>
+            <param name="rnaser_gtf" value="rnaser.gtf" ftype="gtf"/>
+            <section name="sec_advanced">
+                <param name="no_gene" value="true"/>
+                <param name="library_type" value="1"/>
+                <param name="bsj_reads_out" value="true"/>
+            </section>
+            <output name="output_gtf" ftype="gtf">
+                <assert_contents>
+                    <has_text text="circRNA"/>
+                    <has_text text="chrT:1000|5500"/>
+                </assert_contents>
+            </output>
+            <output name="output_bed" ftype="bed">
+                <assert_contents>
+                    <has_text text="chrT:1000|5500"/>
+                </assert_contents>
+            </output>
+            <output name="output_bam" ftype="bam"/>
+            <output name="bsj_reads" ftype="txt">
+                <assert_contents>
+                    <has_text text="chrT:1000|5500"/>
+                </assert_contents>
+            </output>
+            <output name="log" ftype="txt">
+                <assert_contents>
+                    <has_text text="RNase R"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--RNaseR"/>
+                <has_text text="-l '1'"/>
+                <has_text text="--bsj-file"/>
+            </assert_command>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+CIRIquant detects and quantifies circular RNAs (circRNAs) from paired-end RNA-Seq data. The reads are aligned to the reference genome with HISAT2, circRNAs are detected de novo with the packaged CIRI2 detector, back-splice junction (BSJ) and forward-splice junction (FSJ) reads are quantified with BWA against pseudo-circular references, host gene abundance is estimated with StringTie, and a normalized circRNA GTF is produced.
+
+-----
+
+**Input modes**
+
+Three modes are available for choosing the circRNAs to quantify:
+
+- **De novo** (default): CIRI2 detects circRNAs from the alignment of un-/discordantly mapped reads.
+- **BED file**: you provide putative circRNAs; column 4 must hold the circRNA identifier in `chrom:start|end` notation.
+- **Third-party predictions**: circRNAs predicted by CIRI2, CIRCexplorer2, DCC, KNIFE, MapSplice, UROBORUS, circRNA_finder or find_circ.
+
+-----
+
+**RNase R effect correction**
+
+CIRIquant supports a two-step workflow for samples with a matched RNase R treated library: first quantify the RNase R treated sample itself, then re-run CIRIquant on the untreated sample supplying that result as **CIRIquant GTF of the RNase R treated sample**. The output then carries the additional `rnaser_bsj`/`rnaser_fsj` attributes and RNase R treatment statistics in its header, which are required for the RNase R aware differential expression analysis with CIRI_DE.
+
+-----
+
+**Output**
+
+The main output GTF contains one `circRNA` feature per circRNA. The score column holds the CPM-normalized expression and the attributes are:
+
+=============== ============================================================
+Attribute       Meaning
+=============== ============================================================
+`circ_id`       `chrom:start|end` identifier of the circRNA
+`circ_type`     `exon`, `intron`, `antisense` or `intergenic`
+`bsj`           estimated number of back-splice junction supporting reads
+`fsj`           estimated number of forward-splice junction supporting reads
+`junc_ratio`    `2*bsj / (2*bsj + fsj)`
+`gene_id`       host gene identifier (comma-joined for multi-gene overlaps)
+`gene_name`     host gene name
+`gene_type`     host gene biotype
+=============== ============================================================
+
+The `##Sample`, `##Total_Reads`, `##Mapped_Reads` and `##Circular_Reads` header lines hold the library statistics used for normalization. Further outputs are the circRNA BED, the sorted HISAT2 alignment (BAM) and, unless host gene abundance estimation was skipped, the StringTie gene abundance GTF.
+
+.. class:: warningmark
+
+**Do not skip StringTie host gene abundance estimation** if you plan to run CIRI_DE or prep_CIRIquant afterwards: both require the gene abundance information.
+
+-----
+
+**Downstream analysis**
+
+- **CIRI_DE** performs pairwise circRNA differential expression (DE) and isoform switching (DS) analysis on two CIRIquant GTFs without replicates.
+- **prep_CIRIquant** builds count matrices (library information, circRNA annotation, BSJ counts, junction ratios) from replicate CIRIquant GTFs for differential expression analysis with DESeq2/edgeR.
+
+For further details see the [CIRI-cookbook](https://ciri-cookbook.readthedocs.io/en/latest/CIRIquant_0_home.html).
+    ]]></help>
+    <expand macro="citations"/>
+</tool>

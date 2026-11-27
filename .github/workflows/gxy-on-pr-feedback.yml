@@ -115,6 +115,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # A tool dir holds a tool XML. A category folder (tools/image_processing)
+          # holds none, only tool dirs.
+          is_tool() { find "tools/$1" -maxdepth 1 -name '*.xml' ! -name '*macros*.xml' ! -name '*dependencies.xml' ! -name datatypes_conf.xml 2>/dev/null | grep -q .; }
           # PR title format: "tool_dir: auto-generated tool wrapper (issue #N)"
           PR_TITLE=$(gh pr view $PR_NUMBER --json title --jq '.title' 2>/dev/null || echo "")
           TOOL_DIR=$(echo "$PR_TITLE" | cut -d':' -f1 | xargs)
@@ -126,19 +129,55 @@ jobs:
           fi
           # Fallback: derive from the PR's changed files under tools/
           if [ -z "$TOOL_DIR" ]; then
-            TOOL_DIR=$(gh pr diff $PR_NUMBER --name-only | grep -oP '^tools/\K[^/]+' | sort -u | head -1)
+            TOOL_DIR=$(gh pr diff $PR_NUMBER --name-only | grep -oP '^tools/\K[^/]+(/[^/]+)?' | sort -u | head -1)
+            # The second part only counts under a category folder.
+            if is_tool "${TOOL_DIR%%/*}" || [ ! -d "tools/$TOOL_DIR" ]; then TOOL_DIR=${TOOL_DIR%%/*}; fi
             [ -n "$TOOL_DIR" ] && echo "Derived tool directory from PR diff: $TOOL_DIR"
+          fi
+          # Tools can sit in a category folder (tools/image_processing/imagej2):
+          # look a bare name up there. Only a tool dir under a category folder
+          # counts, not e.g. a tool's own scripts/ folder.
+          if [ -n "$TOOL_DIR" ] && [ ! -d "tools/$TOOL_DIR" ] && [[ "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]]; then
+            MATCH=$(for d in tools/*/"$TOOL_DIR"; do d=${d#tools/}; is_tool "$d" && ! is_tool "${d%%/*}" && echo "$d"; done; true)
+            if [ "$(echo "$MATCH" | grep -c .)" -gt 1 ]; then
+              echo "Tool name $TOOL_DIR is in several category folders, can't tell which:"
+              echo "$MATCH"
+              exit 1
+            fi
+            if [ -n "$MATCH" ]; then
+              TOOL_DIR=$MATCH
+              echo "Found the tool in a category folder: $TOOL_DIR"
+            fi
+          fi
+          # A category folder can hold a tool of its own name (text_processing/text_processing).
+          if [[ -n "$TOOL_DIR" && "$TOOL_DIR" != */* ]] && [ -d "tools/$TOOL_DIR" ] && ! is_tool "$TOOL_DIR" && is_tool "$TOOL_DIR/$TOOL_DIR"; then
+            TOOL_DIR=$TOOL_DIR/$TOOL_DIR
           fi
           if [ -z "$TOOL_DIR" ]; then
             echo "Could not determine tool directory from PR title, .tool-name, or changed files"
             exit 1
           fi
           # TOOL_DIR feeds 'rm -rf tools/$TOOL_DIR' later — reject anything
-          # that isn't a plain directory name (traversal via a retitled PR).
+          # that isn't a plain directory name, or one category folder and a name
+          # (traversal via a retitled PR).
           # The first character must not be a dot: '.' and '..' would pass
-          # [A-Za-z0-9_.-] but resolve outside tools/.
-          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]]; then
+          # [A-Za-z0-9_.-] but resolve outside tools/. Same for each part.
+          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?$ ]]; then
             echo "Refusing unsafe tool directory name: $TOOL_DIR"
+            exit 1
+          fi
+          # Only a real tool folder: no symlink, no category folder, and no folder
+          # inside another tool (e.g. music_deconvolution/scripts).
+          if [ -L "tools/${TOOL_DIR%%/*}" ] || [ -L "tools/$TOOL_DIR" ]; then
+            echo "Refusing tools/$TOOL_DIR: it goes through a symlink"
+            exit 1
+          fi
+          if ! is_tool "$TOOL_DIR"; then
+            echo "No tool folder tools/$TOOL_DIR (no tool XML in it)"
+            exit 1
+          fi
+          if [[ "$TOOL_DIR" == */* ]] && is_tool "${TOOL_DIR%%/*}"; then
+            echo "tools/$TOOL_DIR is inside the tool ${TOOL_DIR%%/*}, not a tool of its own"
             exit 1
           fi
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
@@ -174,7 +213,8 @@ jobs:
           # opens the tool dir itself to it.
           chmod 755 "$WORK"
           echo "GXY_TOOL_BOT_EXEC_USER=gxyexec" >> "$GITHUB_ENV"
-          echo "WORK_TOOL_DIR=$WORK/$TOOL_DIR" >> "$GITHUB_ENV"
+          # cp puts the tool dir at $WORK/<name>, also for a category/name path.
+          echo "WORK_TOOL_DIR=$WORK/$(basename "$TOOL_DIR")" >> "$GITHUB_ENV"
       - name: Address feedback
         id: address
         # Failures are reported by the publish job.
@@ -295,7 +335,7 @@ jobs:
         if: env.FIX_OUTCOME == 'success'
         run: |
           RESULT="$RUNNER_TEMP/result/tool"
-          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]]; then
+          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?$ ]]; then
             echo "::error::Refusing unsafe tool directory name: $TOOL_DIR"; exit 1
           fi
           if [ ! -d "$RESULT" ]; then
