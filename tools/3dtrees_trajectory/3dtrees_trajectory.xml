@@ -1,0 +1,169 @@
+<tool id="3dtrees_trajectory" name="3Dtrees: Trajectory and Occlusion" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>estimate a lidar sensor path and map occlusion</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_trajectory:@TOOL_VERSION@</container>
+    </requirements>
+    <version_command>python /src/run.py --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        #if $delivered_trajectory
+            #for $i, $path in enumerate($delivered_trajectory, 1)
+                ln -s '$path' 'path_${i}.csv' &&
+            #end for
+        #end if
+        python /src/run.py
+        #for $cloud in $point_cloud
+            '$cloud'
+        #end for
+        -o trajectory.csv
+        --occlusion-copc occlusion.copc.laz
+        --occlusion-cog occlusion.tif
+        #if $dtm
+            --dtm '$dtm'
+        #end if
+        #if $delivered_trajectory
+            --trajectory
+            #for $i, $path in enumerate($delivered_trajectory, 1)
+                'path_${i}.csv'
+            #end for
+        #end if
+        --voxel $voxel
+        --interval $interval
+        $full
+        --threads "\${GALAXY_SLOTS:-10}"
+    ]]></command>
+    <inputs>
+        <param name="point_cloud" type="data" format="las,laz" multiple="true" label="Standardized LAS/LAZ point cloud" help="Select one dataset or a list from the same acquisition in collection order."/>
+        <param argument="--dtm" type="data" format="tiff" optional="true" label="Digital terrain model" help="Select a GeoTIFF in the point cloud's CRS. Without it, ground height is estimated from the lowest returns."/>
+        <param name="delivered_trajectory" argument="--trajectory" type="data" format="csv,tabular" multiple="true" optional="true" label="Delivered trajectories" help="One or more comma-separated 3Dtrees trajectories with time,x,y,z. Occlusion uses these positions when supplied."/>
+        <param argument="--voxel" type="float" value="0.5" min="0.25" max="2" label="Voxel size (m)" help="Occlusion voxel edge and COG height-band step. Smaller voxels need much more memory and time (0.25 m is about 8 times the grid of 0.5 m)."/>
+        <param argument="--interval" type="float" value="0.5" min="0.1" max="5" label="Path sampling interval (s)" help="Seconds between estimated path positions."/>
+        <param argument="--full" type="boolean" truevalue="--full" falsevalue="--sample" checked="true" label="Use all pulses" help="Fit the path from every pulse (default), streamed with bounded memory. Uncheck to fit from a sample of about 40 million pulses."/>
+    </inputs>
+    <outputs>
+        <data name="trajectory_csv" format="csv" from_work_dir="trajectory.csv" label="${tool.name} on ${on_string}: Trajectory CSV"/>
+        <data name="occlusion_copc" format="laz" from_work_dir="occlusion.copc.laz" label="${tool.name} on ${on_string}: Occlusion COPC"/>
+        <data name="occlusion_cog" format="tiff" from_work_dir="occlusion.tif" label="${tool.name} on ${on_string}: Occlusion COG"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="3">
+            <param name="point_cloud" value="mikro.laz" ftype="laz"/>
+            <output name="trajectory_csv" ftype="csv">
+                <assert_contents>
+                    <has_line line="# format: 3dtrees-trajectory/estimated"/>
+                    <has_line line="# crs: EPSG:32632"/>
+                    <has_line line="# method: scan_angle"/>
+                    <has_line line="# quality: rough"/>
+                    <has_line line="time,x,y,z,roll,pitch,yaw,name"/>
+                    <has_line line="439113281.631579,416921.3332,5347368.2164,534.2064,,,,"/>
+                    <has_line line="439113288.779648,416963.6009,5347360.0818,523.3352,,,,"/>
+                    <has_n_lines n="31"/>
+                    <has_n_columns n="8" sep="," comment="#"/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_copc" ftype="laz">
+                <assert_contents>
+                    <has_size value="42449" delta="4000"/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_cog" ftype="tiff">
+                <assert_contents>
+                    <has_size value="92209" delta="9000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="3">
+            <param name="point_cloud" value="mikro_part1.laz,mikro_part2.laz" ftype="laz"/>
+            <param name="dtm" value="mikro_dtm.tif" ftype="tiff"/>
+            <param name="delivered_trajectory" value="mikro_delivered.csv" ftype="csv"/>
+            <output name="trajectory_csv" ftype="csv">
+                <assert_contents>
+                    <has_line line="# crs: EPSG:32632"/>
+                    <has_line line="# delivered_path_files: 1"/>
+                    <has_line line="# delivered_path_coverage: 0.9795"/>
+                    <has_line line="# delivered_path_miss_flag: true"/>
+                    <has_line line="439113281.631579,416921.3332,5347368.2164,534.2064,,,,"/>
+                    <has_n_lines n="35"/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_copc" ftype="laz">
+                <assert_contents>
+                    <has_size value="57256" delta="5000"/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_cog" ftype="tiff">
+                <assert_contents>
+                    <has_size value="94122" delta="9000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="3">
+            <param name="point_cloud" value="mikro.laz" ftype="laz"/>
+            <param name="voxel" value="1.0"/>
+            <param name="interval" value="1.0"/>
+            <param name="full" value="false"/>
+            <output name="trajectory_csv" ftype="csv">
+                <assert_contents>
+                    <has_line line="439113281.522253,416920.6645,5347367.9305,534.7074,,,,"/>
+                    <has_line line="439113289.321535,416967.6024,5347355.5529,527.3675,,,,"/>
+                    <has_n_lines n="24"/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_copc" ftype="laz">
+                <assert_contents>
+                    <has_size value="17854" delta="2000"/>
+                </assert_contents>
+            </output>
+            <output name="occlusion_cog" ftype="tiff">
+                <assert_contents>
+                    <has_size value="44269" delta="4500"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+Estimate the flight or walking path of a moving lidar scanner (ULS or MLS).
+Use the standardized LAS/LAZ files from one acquisition, in collection order.
+All files must share the same metric coordinates and GPS clock. Preserve
+GPS time, return metadata, scan angles, point sources and scanner channels.
+The tool fits a path from multi-return pulse lines or usable scan angles.
+Single-return data without usable scan angles needs a delivered moving path.
+
+An optional digital terrain model (e.g. the 3Dtrees Raster DTM) sets the ground.
+It may have no CRS; nodata and uncovered cells use the lowest-hit ground estimate.
+A delivered path may be in any EPSG CRS and is converted to the point cloud's CRS;
+"local" in its header or in the outputs means the point cloud's own coordinates.
+One or more delivered paths may be given; each part of the cloud uses the path
+that covers its time and fits best.
+Both occlusion outputs use 0.5 m voxels by default.
+
+**Outputs**
+
+- **Trajectory CSV** with estimated positions, their GPS times and quality metadata.
+- **Occlusion COPC** with voxel classes, traversal counts and height above ground.
+- **Occlusion COG** with the occluded fraction by height band and an unobserved-column band.
+
+With a delivered path, the tool uses it for occlusion and still tries to
+estimate the trajectory outputs. Those outputs can be empty if fitting fails.
+If occlusion cannot run (for example on a COPC instead of the standardized
+LAS/LAZ, or a delivered path that covers too little of the flight), the job
+fails with the reason.
+
+Details, exit codes and resources: https://github.com/3dTrees-earth/3dtrees_trajectory
+    ]]></help>
+    <creator>
+        <person name="Kilian Gerberding" url="https://orcid.org/0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="bibtex">
+            @misc{3dtrees_trajectory, title = {3Dtrees: Trajectory}, author = {3Dtrees-Project}, year = {2026}, url = {https://github.com/3dTrees-earth/3dtrees_trajectory}}
+        </citation>
+        <citation type="doi">10.1016/j.rse.2016.10.023</citation>
+        <citation type="doi">10.3390/rs11192258</citation>
+        <citation type="doi">10.48550/arXiv.2208.12116</citation>
+    </citations>
+</tool>
