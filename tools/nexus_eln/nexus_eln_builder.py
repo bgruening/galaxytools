@@ -21,10 +21,10 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 from nexus_eln_llm_merge import (
-    LLM_FAILED_ANSWER,
     allowed_value,
     Dropped,
     find_quote,
+    LLM_FAILED_ANSWER,
     norm,
     parse_answer,
 )
