@@ -38,6 +38,13 @@ def get_arg():
     parser.add_argument(
         "--log_report", dest="log_report", metavar="log_filename", type=str
     )
+    parser.add_argument(
+        "--umi_mode",
+        dest="umi_mode",
+        choices=["none", "barcode", "bclconvert"],
+        default="none",
+    )
+    parser.add_argument("--umi_mismatches", dest="umi_mismatches", type=int, default=0)
     args = parser.parse_args()
     return args
 
@@ -65,6 +72,17 @@ def __main__():
 
     single_or_paired = "-s" if args.single_or_paired == "single" else "-p"
     cmd = ["deduplicate_bismark", single_or_paired, default_reads_name, "--bam"]
+    if args.umi_mode == "barcode":
+        # the UMI is the tail-of-qname token after the last ':'
+        cmd.append("--barcode")
+    elif args.umi_mode == "bclconvert":
+        # the UMI sits at an internal position of a bcl-convert read name
+        cmd.append("--bclconvert")
+    if args.umi_mode != "none" and args.umi_mismatches:
+        # new in bismark 3.4.0: reads whose UMIs differ by at most N bases at
+        # the same position are treated as one molecule (UMI-tools rule).
+        # Requires --barcode/--bclconvert, hence only forwarded in UMI modes.
+        cmd.extend(["--umi_mismatches", str(args.umi_mismatches)])
     logger.info("Deduplicating with: '%s'", " ".join(cmd))
     process = subprocess.Popen(
         cmd,

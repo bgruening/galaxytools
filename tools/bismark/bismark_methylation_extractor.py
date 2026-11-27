@@ -46,7 +46,12 @@ def build_genome_dir(genome_file):
     )
     try:
         # Create a hard link pointing to genome_file named 'genome_path'.fa.
-        os.symlink(genome_file, genome_path + ".fa")
+        # A gzipped reference keeps its .gz suffix: the Rust bismark suite
+        # only decompresses genome files whose name ends in .gz.
+        if genome_file.endswith(".gz"):
+            os.symlink(genome_file, genome_path + ".fa.gz")
+        else:
+            os.symlink(genome_file, genome_path + ".fa")
     except Exception as e:
         if os.path.exists(tmp_genome_dir):
             shutil.rmtree(tmp_genome_dir)
