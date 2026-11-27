@@ -48,6 +48,7 @@ hand-written detection answers.
 | builder | `afm_header.json`, `flt_header.json` | A header marker (text and JSON header) wins over the extension; the conflict is reported |
 | builder | `answer_detect_afm.md`, `answer_detect_sts.md` | A found quote wins; a scan mode of another technique is dropped |
 | builder | `answer_detect_no_quote.md` | A quote in no source is dropped; the extension decides |
+| builder | `answer_llm_failed.md` | A failed detection job (`llm_failed`): the extension decides |
 | LLM input | `bundle_17202182.json`, `eln_17202182.yaml`, `T190613_004_header.json` | STM record [17202182](https://zenodo.org/records/17202182) (CC-BY-4.0): header, readme and PDF text |
 | LLM input | `bundle_afm.json`, `eln_afm.yaml`, `afm_header.json` | AFM: readme and header; `scan_mode` left to the LLM |
 | LLM input | `bundle_without_context.json`, `eln_sts.yaml`, `no_header.json` | STS without context or header |
@@ -56,7 +57,7 @@ hand-written detection answers.
 | LLM input | `eln_instructions_incomplete.md` | A missing section, or one that misses rule values, fails |
 | merge | `answer_afm_checks.md` (hand-written) | Each field hits one check; quotes with typographic spaces and hyphens or a missing space are still found |
 | merge | `answer_mistral_medium_3_5.md` | Real answer of Mistral Medium 3.5 (LLM Hub, usegalaxy.eu): names made ASCII; a header key alone is no evidence |
-| merge | no answer, `answer_skipped.json`, `answer_no_yaml.md` | LLM off, skipped step, unreadable answer: the rule ELN is the output |
+| merge | no answer, `answer_skipped.json`, `answer_no_yaml.md`, `answer_llm_failed.md` | LLM off, skipped step, unreadable answer, failed LLM job: the rule ELN is the output |
 | merge | `answer_header_json.md` (hand-written), `const_dos_header.json` | Header JSON quotes fill header fields only; a JSON key alone is no evidence |
 
 `eln_17202182.yaml` and `eln_afm.yaml` are rule ELNs: they have no `Sample` part, because the builder

@@ -28,6 +28,9 @@ from nexus_llm_input import (
 
 logger = logging.getLogger("nexus_eln_llm_merge")
 
+# The workflow puts this answer (zenodo_nomad_download's `no_answer`) in place of a failed
+# llm_hub job. Keep both texts the same.
+LLM_FAILED_ANSWER = "LLM job failed: no answer."
 NAME_FIELDS = ("Sample.name", "Sample.Sample_component.name")
 FORMULA_FIELD = "Sample.Sample_component.chemical_formula"
 ELEMENTS = set("""
@@ -244,6 +247,9 @@ def merge(rule_eln, answer_text, bundle, header, rules, instructions_path):
     }
     if answer_text is None:
         report["status"] = "no_answer"
+        return copy.deepcopy(rule_eln), report
+    if answer_text.strip() == LLM_FAILED_ANSWER:
+        report["status"] = "llm_failed"
         return copy.deepcopy(rule_eln), report
     report["answer_sha256"] = hashlib.sha256(answer_text.encode("utf-8")).hexdigest()
     if not definition:

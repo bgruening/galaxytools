@@ -20,7 +20,14 @@ import sys
 from pathlib import Path, PurePosixPath
 
 import yaml
-from nexus_eln_llm_merge import allowed_value, Dropped, find_quote, norm, parse_answer
+from nexus_eln_llm_merge import (
+    allowed_value,
+    Dropped,
+    find_quote,
+    LLM_FAILED_ANSWER,
+    norm,
+    parse_answer,
+)
 from nexus_llm_input import plain_text, set_path, source_files
 
 logger = logging.getLogger("nexus_eln_builder")
@@ -105,6 +112,9 @@ def llm_detection(answer_text, sources, rules):
     """
     result = {"status": "no_answer", "fields": {}}
     if answer_text is None:
+        return result
+    if answer_text.strip() == LLM_FAILED_ANSWER:
+        result["status"] = "llm_failed"
         return result
     values, evidence = parse_answer(answer_text)
     if values is None:
