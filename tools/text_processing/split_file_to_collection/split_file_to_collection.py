@@ -180,6 +180,18 @@ def parser_cli():
     return parser
 
 
+def safe_file_name(name):
+    """
+    Turn a user supplied base name or a value from the input into a plain file
+    name inside out_dir: path separators and NUL become '_', as does a leading
+    '.', so the name can neither point into another directory nor be '.' or '..'.
+    """
+    name = re.sub(r"[/\\\0]", "_", name)
+    if name.startswith("."):
+        name = "_" + name[1:]
+    return name or "_"
+
+
 def replace_mapped_chars(pattern):
     """
     handles special escaped characters when coming from galaxy
@@ -252,7 +264,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
     if custom_new_file_name is None:
         new_file_base = os.path.splitext(os.path.basename(in_file))
     else:
-        new_file_base = [custom_new_file_name, custom_new_file_ext]
+        new_file_base = [safe_file_name(custom_new_file_name), custom_new_file_ext]
 
     newfile_names = [
         os.path.join(out_dir, "%s_%06d%s" % (new_file_base[0], count, new_file_base[1]))
@@ -350,6 +362,9 @@ def split_by_column(args, in_file, out_dir, top):
 
     # set of file names
     files = set()
+    # cleaned, unique file name for each name produced by the regex: names that
+    # only differ in characters safe_file_name() replaces get _2, _3, ...
+    file_names = {}
 
     # keep track of how many lines have been read
     n_read = 0
@@ -368,7 +383,16 @@ def split_by_column(args, in_file, out_dir, top):
             id_col_val = fields[id_col]
 
             # use regex to get new file name
-            out_file_name = re.sub(match, sub, id_col_val)
+            raw_name = re.sub(match, sub, id_col_val)
+            if raw_name not in file_names:
+                base, ext = os.path.splitext(safe_file_name(raw_name))
+                name = base + ext
+                n = 1
+                while name in files:
+                    n += 1
+                    name = "%s_%d%s" % (base, n, ext)
+                file_names[raw_name] = name
+            out_file_name = file_names[raw_name]
             out_file_path = os.path.join(out_dir, out_file_name)
 
             # write
